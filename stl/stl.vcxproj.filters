@@ -23,5 +23,8 @@
     <ClInclude Include="ch1-Classical_Polymorphism_and_Generic_Programming.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch2-Iterators_and_Ranges.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
