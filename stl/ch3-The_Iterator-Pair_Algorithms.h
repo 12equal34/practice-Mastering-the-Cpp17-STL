@@ -10,6 +10,7 @@
 #include <iterator>
 #include <iostream>
 #include <type_traits>
+#include <boost/iterator/iterator_facade.hpp>
 
 //-----------------------------------------------------------------------------
 // [Read-only range algorithms]
@@ -236,9 +237,136 @@ bool equal(It1 first1, It1 last1, It2 first2, It2 last2)
 //-----------------------------------------------------------------------------
 // [Shunting data with std::copy]
 //-----------------------------------------------------------------------------
-// (shunt 뜻: to move (someone or something) to a different and usually less
+// (shunt: to move (someone or something) to a different and usually less
 // important or noticeable place or position.)
 namespace section2
 {
+// std::copy의 구현은 다음과 같다.
+template <class InIt, class OutIt>
+OutIt copy(InIt first1, InIt last1, OutIt destination)
+{
+    while (first1 != last1) {
+        *destination = *first1;
+        ++first1;
+        ++destination;
+    }
+    return destination;
+}
+// std::copy는 two-range version을 제공하지 않는다.
+// 그래서 쓰기 버퍼의 크기 체크는 이미 했다고 가정한다.
+// 가정이 틀리면 버퍼 오버플로우가 발생한다.
 
+// destination을 output iterator라고 했는데
+// std::copy는 데이터를 다른곳에 저장하는 용도가 아닌, 데이터를 임의의 함수에
+// 공급하는 용도로 사용될 수 있다. 예를 들어 다음과 같다.
+class putc_iterator
+    : public boost::iterator_facade<putc_iterator, const putc_iterator,
+                                    std::output_iterator_tag>
+{
+    friend class boost::iterator_core_access;
+
+    auto& dereference() const { return *this; }
+    void  increment() { }
+    bool  equal(const putc_iterator&) const { return false; }
+public:
+    // This iterator is its own proxy object!
+    void operator=(char ch) const { putc(ch, stdout); }
+};
+void test1()
+{
+    std::string s = "hello";
+    std::copy(s.begin(), s.end(), putc_iterator {});
+}
+// 이러한 destination의 유연함 덕분에 버퍼 오버플로우 문제를 해결할 수 있다.
+// 먼저 고정된 배열이 아닌 가변형의 std::vector를 쓴다고 가정하자.
+// 그러면 writing an element는 pushing an element back과 상응한다.
+// output iterator를 putc_iterator와 비슷하게 작성하고
+// putc 대신에 push_back을 사용한다면 오버플로우가 발생하지 않을 것이다.
+// 이러한 iterator는 STL에서 제공한다. <iterator> 헤더파일 안에서,
+template <class Container>
+class back_insert_iterator
+{
+    using CtrValueType = typename Container::value_type;
+    Container* c;
+public:
+    using iterator_category = std::output_iterator_tag;
+    using difference_type   = void;
+    using value_type        = void;
+    using pointer           = void;
+    using reference         = void;
+
+    explicit back_insert_iterator(Container& ctr)
+        : c(&ctr)
+    { }
+
+    auto& operator*() { return *this; }
+    auto& operator++() { return *this; }
+    auto& operator++(int) { return *this; }
+
+    auto& operator=(const CtrValueType& v)
+    {
+        c->push_back(v);
+        return *this;
+    }
+    auto& operator=(CtrValueType&& v)
+    {
+        c->push_back(std::move(v));
+        return *this;
+    }
+};
+template <class Container>
+auto back_inserter(Container& c)
+{
+    return back_insert_iterator<Container>(c);
+}
+void test2()
+{
+    std::string       s = "hello";
+    std::vector<char> dest;
+    std::copy(s.begin(), s.end(), section2::back_inserter(dest));
+    assert(dest.size() == 5);
+}
+// 여기서 back_inserter_iterator(dest) 대신에 back_inserter(dest)라고
+// 작성했는데, 이는 c++14 까지는 이렇게 작성해야 했고 c++17부터
+// 생성자에 대한 템플릿 타입의 연역 기능 덕분에 곧바로
+// back_inserter_iterator(dest) 을 작성해도 된다.
+// 하지만, c++17 이후로
+// std::make_pair 대신에 std::pair를,
+// std::make_tuple 대신에 std::tuple를 선호하는 것처럼
+// 더 적게 타이핑하는 방법인 std::back_inserter(dest)를 선호해야 한다.
+}
+
+//-----------------------------------------------------------------------------
+// [Variations on a theme - std::move and std::move_iterator]
+//-----------------------------------------------------------------------------
+namespace section3
+{
+// 이전 절에서 std::copy은 input range의 원소들을 output으로 복제한다.
+// 여기서 복제가 아닌 이동 연산을 사용하는 것이 가능할까?
+// 이러한 문제를 위해 STL은 2가지의 접근법을 제공한다.
+// 
+// 1. std::move algorithm defined in <algorithm>
+template <class InIt, class OutIt>
+OutIt move(InIt first1, InIt last1, OutIt destination)
+{
+    while (first1 != last1) {
+        *destination = std::move(*first1);
+        ++first1;
+        ++destination;
+    }
+    return destination;
+}
+// 이는 std::copy 알고리즘과 std::move 를 추가한 것 빼고는 정확히 일치한다.
+// 참고로 여기서 std::move 유틸리티 함수는 <utility>에 포함된 매개변수 3개가
+// 아닌 1개를 받는 오버로드 함수로 위의 std::move 알고리즘과 전혀 다르다.
+// 이렇게 운이 나쁘게 이름을 공유하는 경우가 std::remove 에도 존재한다.
+//
+// 다른 방법으로 이전 절에서 보았던 back_inserter의 변형이며
+// 
+// 2. back_inserter
+template<class It>
+class move_iterator
+{
+
+};
 }
