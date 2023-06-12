@@ -4,5 +4,5 @@
 
 int main()
 {
-	section2::test2();
+	section5::example();
 }

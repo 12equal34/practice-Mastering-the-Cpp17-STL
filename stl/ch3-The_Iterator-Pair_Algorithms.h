@@ -11,6 +11,7 @@
 #include <iostream>
 #include <type_traits>
 #include <boost/iterator/iterator_facade.hpp>
+#include <numeric>
 
 //-----------------------------------------------------------------------------
 // [Read-only range algorithms]
@@ -344,7 +345,7 @@ namespace section3
 // 이전 절에서 std::copy은 input range의 원소들을 output으로 복제한다.
 // 여기서 복제가 아닌 이동 연산을 사용하는 것이 가능할까?
 // 이러한 문제를 위해 STL은 2가지의 접근법을 제공한다.
-// 
+//
 // 1. std::move algorithm defined in <algorithm>
 template <class InIt, class OutIt>
 OutIt move(InIt first1, InIt last1, OutIt destination)
@@ -361,12 +362,254 @@ OutIt move(InIt first1, InIt last1, OutIt destination)
 // 아닌 1개를 받는 오버로드 함수로 위의 std::move 알고리즘과 전혀 다르다.
 // 이렇게 운이 나쁘게 이름을 공유하는 경우가 std::remove 에도 존재한다.
 //
-// 다른 방법으로 이전 절에서 보았던 back_inserter의 변형이며
-// 
-// 2. back_inserter
-template<class It>
+// 다른 방법으로 이전 절에서 보았던 back_inserter와 비슷한 방법이 있다.
+// 2. std::move_iterator adaptor class
+template <class It>
 class move_iterator
 {
+    using OriginalRefType = typename std::iterator_traits<It>::reference;
+    It iter;
+public:
+    using iterator_category =
+        typename std::iterator_traits<It>::iterator_category;
+    using difference_type = typename std::iterator_traits<It>::difference_type;
+    using value_type      = typename std::iterator_traits<It>::value_type;
+    using pointer         = It;
+    using reference =
+        std::conditional_t<std::is_reference_v<OriginalRefType>,
+                           std::remove_reference_t<OriginalRefType>&&,
+                           OriginalRefType>;
 
+    move_iterator() = default;
+    explicit move_iterator(It it)
+        : iter(std::move(it))
+    { }
+
+    // Allow constructing or assigning from any kind of move-iterator.
+    // These templates also serve as our own type's copy constructor
+    // and assignment operator, respectively.
+    template <class U>
+    move_iterator(const move_iterator<U>& m)
+        : iter(m.base())
+    { }
+    template <class U>
+    auto& operator=(const move_iterator<U>& m)
+    {
+        iter = m.base();
+        return *this;
+    }
+
+    It             base() const { return iter; }
+    It             operator->() { return iter; }
+    reference      operator*() { return static_cast<reference>(*iter); }
+    decltype(auto) operator[](difference_type n) const
+    {
+        return *std::move(iter[n]);
+    }
+    auto& operator++()
+    {
+        ++iter;
+        return *this;
+    }
+    auto& operator++(int)
+    {
+        auto result = *this;
+        ++*this;
+        return result;
+    }
+    auto& operator+=(difference_type n) const
+    {
+        iter += n;
+        return *this;
+    }
+    auto& operator-=(difference_type n) const
+    {
+        iter -= n;
+        return *this;
+    }
 };
+// 제공하는 맴버 함수들이 많은데 이를 지원할 수 없는 It의 타입들에 대해서
+// 해당 맴버 함수를 코드에서 사용하면 컴파일 에러가 발생한다.
+// 하지만 사용하지 않으면 인스턴스화하지 않으므로 문제 없다.
+
+// back_inserter에서의 설명과 마찬가지로 다음 helper function이 존재한다.
+// 즉, 타이핑이 길어지므로 make_pair와 make_tuple같은 존재다.
+template <class InputIterator>
+auto make_move_iterator(InputIterator& c)
+{
+    return move_iterator(c);
 }
+
+// We have two different ways of moving data from one container or
+// range to another: 1.std::move algorithm, 2.std::move_iterator adaptor class.
+// 다음 예제를 보자.
+void example()
+{
+    std::vector<std::string> input = {"hello", "world"};
+    std::vector<std::string> output(2);
+
+    // First approach: use the std::move algorithm
+    std::move(input.begin(), input.end(), output.begin());
+
+    // Second approach: use move_iterator
+    std::copy(std::move_iterator(input.begin()),
+              std::move_iterator(input.end()), output.begin());
+}
+// std::copy보다 std::move를 사용하는 방법이 더 명확하다.
+// STL에서 move_iterator 를 제공하는 이유는 다음 절에서 설명할
+// std::copy와 관련된 알고리즘에 사용되기 때문이다.
+}
+
+//-----------------------------------------------------------------------------
+// [Complicated copying with std::transform]
+//-----------------------------------------------------------------------------
+namespace section4
+{
+// std::copy의 구현에서 2개의 iterator type parameters를 받는다.
+// 그래서 각각의 value_type이 서로 다를 수 있는데 이는 암시적 변환을 이용한 코드
+// 작성을 가능하게 한다. 다음을 보자.
+void example1()
+{
+    std::vector<const char*> input = {"hello", "world"};
+    std::vector<std::string> output(2);
+
+    std::copy(input.begin(), input.end(), output.begin());
+
+    assert(output[0] == "hello");
+    assert(output[1] == "world");
+}
+// *input.begin()의 const char * 타입에서
+// *output.begin()의 std::string 타입으로 암시적 캐스팅 생성자가 호출된다.
+// 이런 식으로 copy연산 과정에서 캐스팅하는데 좀더 복잡한 transformation 함수가
+// 필요할 때가 있다.
+// 다음 std::transform 을 보자.
+template <class InIt, class OutIt, class Unary>
+OutIt transform(InIt first1, InIt last1, OutIt destination, Unary op)
+{
+    while (first1 != last1) {
+        *destination = op(*first1);
+        ++first1;
+        ++destination;
+    }
+    return destination;
+}
+
+void example2()
+{
+    std::vector<std::string> input = {"hello", "world"};
+    std::vector<std::string> output(2);
+
+    std::transform(input.begin(), input.end(), output.begin(),
+                   [](std::string s) {
+                       std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+                       return s;
+                   });
+
+    assert(input[0] == "hello");
+    assert(output[0] == "HELLO");
+}
+
+// 가끔은 two arguments를 받는 transformation이 필요할 때가 있다.
+template <class InIt1, class InIt2, class OutIt, class Binary>
+OutIt transform(InIt1 first1, InIt1 last1, InIt2 first2, InIt2 last2,
+                OutIt destination, Binary op)
+{
+    while (first1 != last1) {
+        *destination = op(*first1, *first2);
+        ++first1;
+        ++first2;
+        ++destination;
+    }
+    return destination;
+}
+
+// 데이터를 이동시키는 3번째 방법은 다음과 같다.
+void example3()
+{
+    std::vector<std::string> input = {"hello", "world"};
+    std::vector<std::string> output(2);
+
+    // Third approach: use std::transform
+    std::transform(input.begin(), input.end(), output.begin(),
+                   std::move<std::string&>);
+}
+// 하지만 std::move 템플릿의 explicit specialization를 포함하게 된다.
+// 언제나 어떠한 explicit specialization--those angle brackets after the
+// template's name-- 을 포함한다는 것은 매우 미묘하고 취약한 코드라는 확실한
+// 신호이다.
+}
+
+//-----------------------------------------------------------------------------
+// [Write-only range algorithms]
+//-----------------------------------------------------------------------------
+namespace section5
+{
+// There is a family of standard algorithms that march through a range modifying
+// each element without reading it.
+
+// std::fill(a,b,v)는 [a,b)의 모든 원소를 v의 복사본으로 채운다.
+// std::iota(a,b,v)는 [a,b)의 모든 원소를 첫째항 v, 공차가 1인 등차수열로 채운다.
+// std::generate(a,b,g)는 [a,b)의 모든 원소를 g(void)의 리턴값으로 채운다.
+// (여기서 std::iota는 <numeric>에 포함되어 있다.)
+template<class FwdIt, class T>
+void fill(FwdIt first, FwdIt last, T value)
+{
+    while (first != last) {
+        *first = value;
+        ++first;
+    }
+}
+template<class FwdIt, class T>
+void iota(FwdIt first, FwdIt last, T value)
+{
+    while (first != last) {
+        *first = value;
+        ++value;
+        ++first;
+    }
+}
+template<class FwdIt, class G>
+void generate(FwdIt first, FwdIt last, G generator)
+{
+    while (first != last) {
+        *first = generator();
+        ++first;
+    }
+}
+
+// 다음 예시를 보자.
+void example()
+{
+    std::vector<std::string> v(4);
+
+    std::fill(v.begin(), v.end(), "hello");
+    assert(v[0] == "hello");
+    assert(v[1] == "hello");
+    assert(v[2] == "hello");
+    assert(v[3] == "hello");
+
+    std::iota(v.begin(), v.end(), "hello");
+    assert(v[0] == "hello");
+    assert(v[1] == "ello");
+    assert(v[2] == "llo");
+    assert(v[3] == "lo");
+
+    std::generate(v.begin(), v.end(), [i = 0]() mutable {
+        return ++i % 2 ? "hello" : "world";
+    });
+    assert(v[0] == "hello");
+    assert(v[1] == "world");
+    assert(v[2] == "hello");
+    assert(v[3] == "world");
+}
+}
+
+
+//-----------------------------------------------------------------------------
+// [Algorithms that affect object lifetime]
+//-----------------------------------------------------------------------------
+namespace section6
+{
+
+}
+
