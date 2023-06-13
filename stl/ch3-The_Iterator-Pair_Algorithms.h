@@ -548,10 +548,10 @@ namespace section5
 // each element without reading it.
 
 // std::fill(a,b,v)는 [a,b)의 모든 원소를 v의 복사본으로 채운다.
-// std::iota(a,b,v)는 [a,b)의 모든 원소를 첫째항 v, 공차가 1인 등차수열로 채운다.
-// std::generate(a,b,g)는 [a,b)의 모든 원소를 g(void)의 리턴값으로 채운다.
-// (여기서 std::iota는 <numeric>에 포함되어 있다.)
-template<class FwdIt, class T>
+// std::iota(a,b,v)는 [a,b)의 모든 원소를 첫째항 v, 공차가 1인 등차수열로
+// 채운다. std::generate(a,b,g)는 [a,b)의 모든 원소를 g(void)의 리턴값으로
+// 채운다. (여기서 std::iota는 <numeric>에 포함되어 있다.)
+template <class FwdIt, class T>
 void fill(FwdIt first, FwdIt last, T value)
 {
     while (first != last) {
@@ -559,7 +559,7 @@ void fill(FwdIt first, FwdIt last, T value)
         ++first;
     }
 }
-template<class FwdIt, class T>
+template <class FwdIt, class T>
 void iota(FwdIt first, FwdIt last, T value)
 {
     while (first != last) {
@@ -568,7 +568,7 @@ void iota(FwdIt first, FwdIt last, T value)
         ++first;
     }
 }
-template<class FwdIt, class G>
+template <class FwdIt, class G>
 void generate(FwdIt first, FwdIt last, G generator)
 {
     while (first != last) {
@@ -594,9 +594,8 @@ void example()
     assert(v[2] == "llo");
     assert(v[3] == "lo");
 
-    std::generate(v.begin(), v.end(), [i = 0]() mutable {
-        return ++i % 2 ? "hello" : "world";
-    });
+    std::generate(v.begin(), v.end(),
+                  [i = 0]() mutable { return ++i % 2 ? "hello" : "world"; });
     assert(v[0] == "hello");
     assert(v[1] == "world");
     assert(v[2] == "hello");
@@ -604,12 +603,263 @@ void example()
 }
 }
 
-
 //-----------------------------------------------------------------------------
 // [Algorithms that affect object lifetime]
 //-----------------------------------------------------------------------------
 namespace section6
 {
+// <memory> 헤더파일에 잘 안 알려져 있는 알고리즘으로
+// std::uninitialized_copy, std::uninitialized_default_construct,
+// and std::destroy 가 있다.
 
+// 다음은 a range의 모든 원소들을 소멸하는 알고리즘이다.
+template <class T>
+void destroy_at(T* p)
+{
+    p->~T();
+}
+template <class FwdIt>
+void destroy(FwdIt first, FwdIt last)
+{
+    for (; first != last; ++first) {
+        std::destroy_at(std::addressof(*first));
+    }
+}
+// std::addressof(x)는 x의 주소를 리턴하는 helper function이며 x의 클래스가
+// operator&를 오버로드한 매우 드문 경우가 아니면 정확히 &x와 동일한다.
+
+// std::uninitialized_copy는
+// a range의 모든 원소의 자리에 직접 copy-construct into하는 알고리즘이다.
+template <class It, class FwdIt>
+FwdIt uninitialized_copy(It first, It last, FwdIt out)
+{
+    using T       = typename std::iterator_traits<FwdIt>::value_type;
+    FwdIt old_out = out;
+    try {
+        while (first != last) {
+            ::new (static_cast<void*>(std::addressof(*out))) T(*first);
+            ++first;
+            ++out;
+        }
+        return out;
+    } catch (...) {
+        std::destroy(old_out, out);
+        throw;
+    }
 }
 
+void test()
+{
+    alignas(std::string) char b[5 * sizeof(std::string)];
+    std::string*              sb = reinterpret_cast<std::string*>(b);
+
+    std::vector<const char*> vec = {"quick", "brown", "fox"};
+
+    // Construct three std::strings.
+    auto end = std::uninitialized_copy(vec.begin(), vec.end(), sb);
+
+    assert(end == sb + 3);
+
+    // Destroy three std::strings.
+    std::destroy(sb, end);
+}
+}
+
+//-----------------------------------------------------------------------------
+// [Our first permutative algorithm: std::sort]
+//-----------------------------------------------------------------------------
+namespace section7
+{
+// 이번 절에서 대수학의 permutation연산을 하는 algorithms에 대해 공부한다.
+// std::sort(a,b)는 operator<에 대해 오름차순으로 정렬한다.
+// operator<를 오버로드하여 다른 조건으로 정렬할 수 있지만
+// std::sort(a,b,cmp) 버전을 사용해야 한다.
+void example1()
+{
+    std::vector<int> v = {3, 1, 4, 1, 5, 9};
+    std::sort(v.begin(), v.end(),
+              [](auto&& a, auto&& b) { return a % 7 < b % 7; });
+    assert((v == std::vector {1, 1, 9, 3, 4, 5}));
+
+    std::sort(v.begin(), v.end(),
+              [](auto&& a, auto&& b) { return a % 6 < b % 6; });
+
+    assert((v == std::vector {1, 1, 9, 3, 4, 5} ||
+            v == std::vector {1, 1, 3, 9, 4, 5}));
+}
+// 정렬되는 순서가 같은 우선순위를 가질 때, std::sort는 상대적인 위치를
+// 확실하게 결정지어 주지 않고, std::stable_sort는 좀더 느리지만
+// the original order를 보존하여 {1,1,3,9,4,5}로 정렬한다.
+
+// cmp는 the comparison relation을 만족하는 함수여야 정상적으로 정렬할 수 있다.
+// 예를 들어 (a % 6 < b) 를 리턴하는 함수는 5와 9에 대해서
+// cmp(5,9) == cmp(9,5) == true 가 되므로 비교 함수가 될 수 없다.
+}
+
+//-----------------------------------------------------------------------------
+// [Swapping, reversing, and partitioning]
+//-----------------------------------------------------------------------------
+namespace section8
+{
+// STL은 std::sort 말고도 많은 permutative algorithms이 있다.
+// 이 알고리즘들은 대부분 다른 정렬 알고리즘의 building blocks 역할을 한다.
+// 그 중 std::swap(a,b)는 가장 기본적인 building block이다.
+// 또한 기본적인 알고리즘의 primitive operation의 역할을 하기에 특별하다.
+// std::vector같은 standard library types은 각자의 swap 맴버 함수를 정의하고
+// std::swap 오버로드 함수가 이를 호출하게 한다.
+// 예를 들어, std::swap(a,b)를 호출하면 a.swap(b)를 호출하게 된다.
+// 이러한 구현은 다음과 같다.
+namespace my
+{
+    class obj
+    {
+        int v;
+    public:
+        obj(int value)
+            : v(value)
+        { }
+        void swap(obj& other)
+        {
+            using std::swap;
+            swap(this->v, other.v);
+        }
+    };
+    void swap(obj& a, obj& b) { a.swap(b); }
+}
+void test()
+{
+    int              i1 = 1, i2 = 2;
+    std::vector<int> v1 = {1}, v2 = {2};
+    my::obj          m1 = 1, m2 = 2;
+    using std::swap;
+    swap(i1, i2); // calls std::swap<int>(int&, int&)
+    swap(v1, v2); // calss std::swap(vector&, vector&)
+    swap(m1, m2); // calss my::swap(obj&, obj&)
+}
+
+// 이제 swap과 bidirectional iterators를 가지고 기존 원소의 순서를 뒤집어서
+// 스왑하는 std::reverse(a,b)를 만들 수 있다.
+void reverse_words_in_place(std::string& s)
+{
+    // First, reverse the whole string.
+    std::reverse(s.begin(), s.end());
+
+    // Next, un-reverse each individual word.
+    for (auto it = s.begin(); true; ++it) {
+        auto next = std::find(it, s.end(), ' ');
+        // Reverse the order of letters in this word.
+        std::reverse(it, next);
+        if (next == s.end()) {
+            break;
+        }
+        it = next;
+    }
+}
+void test2()
+{
+    std::string s = "the quick brown fox jumps over the lazy dog";
+    reverse_words_in_place(s);
+    assert(s == "dog lazy the over jumps fox brown quick the");
+}
+
+// std::reverse의 구현은 다음과 같고
+template <class BidirIt>
+void reverse(BidirIt first, BidirIt last)
+{
+    while (first != last) {
+        --last;
+        if (first == last) break;
+        using std::swap;
+        swap(*first, *last);
+        ++first;
+    }
+}
+// std::reverse는 sort 중 std::partition의 building block 역할을 한다.
+//
+// std::partition(a,b,p)은 구간 [a,b)의 원소들에 대해
+// p가 참인 원소는 앞으로, p가 거짓인 원소는 뒤로 정렬한다.
+// 처음으로 p(*first) == false인 pivot의 iter를 리턴한다.
+// 즉, 앞의 파티션의 end point, 뒤의 파티션의 start point이다.
+template <class BidirIt, class Unary>
+auto partition(BidirIt first, BidirIt last, Unary p)
+{
+    // std::find_if_not 과 동일하다.
+    while (first != last && p(*first)) {
+        ++first;
+    }
+
+    while (first != last) {
+        // std::find_if가 만약 backward로 진행한다면 동일하다.
+        // 이를 Standard library에서 std::rfind_if라는 이름으로 빠트린 것 같지만
+        // std::reverse_iterator adaptor를 사용하면 된다.
+        do {
+            --last;
+        } while (last != first && !p(*last));
+
+        if (first == last) break;
+        using std::swap;
+        swap(*first, *last);
+
+        // std::find_if_not 과 동일하다.
+        do {
+            ++first;
+        } while (first != last && p(*first));
+    }
+    return first;
+}
+void test3()
+{
+    std::vector<int> v = {3, 1, 4, 1, 5, 9, 2, 6, 5};
+    // 짝수를 앞으로, 홀수를 뒤로 보낸다.
+    auto it =
+        std::partition(v.begin(), v.end(), [](int x) { return x % 2 == 0; });
+    assert(it == v.begin() + 3);
+    assert((v == std::vector {6, 2, 4, 1, 5, 9, 1, 3, 5}));
+}
+// 다음은 다시 std::partition을 std::reverse를 기반으로 작성한 코드다.
+template <class It>
+auto rev(It it)
+{
+    return std::reverse_iterator(it);
+}
+template <class InnerIt>
+auto unrev(std::reverse_iterator<InnerIt> it)
+{
+    return it.base();
+}
+template <class BidirIt, class Unary>
+auto partition(BidirIt first, BidirIt last, Unary p)
+{
+    first = std::find_if_not(first, last, p);
+
+    while (first != last) {
+        last = unrev(std::find(rev(last), rev(first), p));
+
+        if (first == last) break;
+        using std::swap;
+        swap(*first, *last);
+
+        first = std::find_if_not(first, last, p);
+    }
+    return first;
+}
+// std::partition 또한 원래 원소들의 순서를 보존하는
+// std::stable_partition(a,b,p) 버전이 있다.
+// 분할을 다루는 non-permutative algorithms들이 있는데,
+// std::is_partitioned(a,b,p)는 predicate p를 기준으로 이미 분할되어 있으면
+// true를 리턴하고 그렇지 않으면 false를 리턴한다.
+// std::partition_point(a,b,p)는 binary search를 사용하여 이미 분할된 구간에
+// 대해 p가 거짓인 첫번째 원소를 리턴한다.(pivot를 리턴한다.)
+// std::partition_copy(a,b,ot,of,p)는 [a,b) 구간의 원소를 각각 p가 참이면
+// ot에, p가 거짓이면 of에 복제한다.
+// std::copy_if(a,b,ot,p) 또는 std::remove_copy_if(a,b,of,p)를 사용하면
+// 각각 p가 참인 수열, p가 거짓인 수열을 복제한다.
+}
+
+//-----------------------------------------------------------------------------
+// [Rotation and permutation]
+//-----------------------------------------------------------------------------
+namespace section9
+{
+
+}
