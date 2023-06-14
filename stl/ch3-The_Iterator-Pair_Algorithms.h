@@ -861,5 +861,368 @@ auto partition(BidirIt first, BidirIt last, Unary p)
 //-----------------------------------------------------------------------------
 namespace section9
 {
+// std::rotate(a,mid,b)는 [a,b)의 원소를 cyclic rotate시켜서 mid에 해당하는
+// 원소를 맨 앞으로 보낸다.
+template <class FwdIt>
+FwdIt rotate(FwdIt a, FwdIt mid, FwdIt b)
+{
+    // 주어진 수열이 {L, m, R}과 같다고 하자.
+    auto result = a + (b - mid); // = a + |R| + 1
 
+    // First, reverse the whole range.
+    std::reverse(a, b); // {R',m,L'}
+    // Next, un-reverse each individual segment.
+    std::reverse(a, result); // {m,R,L'}
+    std::reverse(result, b); // {m,R,L}
+
+    return result;
+}
+
+void test()
+{
+    std::vector<int> v    = {1, 2, 3, 4, 5, 6};
+    auto             five = std::find(v.begin(), v.end(), 5);
+    auto             one  = std::rotate(v.begin(), five, v.end());
+    assert((v == std::vector {5, 6, 1, 2, 3, 4}));
+    assert(*one == 1);
+}
+
+// std::next_permutation(a,b)을 호출하여 n개 원소에 대한 모든 permutations을
+// 구하는 루프문을 작성할 수 있다.
+void test2()
+{
+    std::vector<int>              p = {10, 20, 30};
+    std::vector<std::vector<int>> results;
+
+    // Collect the permutations of these three elements.
+    for (int i = 0; i < 6; ++i) {
+        results.push_back(p);
+        std::next_permutation(p.begin(), p.end());
+    }
+
+    assert((results == std::vector<std::vector<int>> {
+                           {10, 20, 30},
+                           {10, 30, 20},
+                           {20, 10, 30},
+                           {20, 30, 10},
+                           {30, 10, 20},
+                           {30, 20, 10},
+    }));
+}
+// 이는 사전 순서대로 permutate한다.
+// std::next_permutaion(a,b,cmp) 버전은 cmp를 토대로 permutate한다.
+// 이와 반대방향으로 permutate하는 std::prev_permutaion(a,b)가 있다.
+// 사전 순서대로 비교하는 std::lexicographical_compare(a,b,c,d)가 있다.
+}
+
+//-----------------------------------------------------------------------------
+// [Heaps and heapsort]
+//-----------------------------------------------------------------------------
+namespace section10
+{
+// the max-heap property: 구간 a의 모든 원소에 대해
+// a[i] > a[2i+1] && a[i] > a[2i+2]를 만족한다.
+// 위의 성질을 만족시키는 정렬을 heapsort이라 한다.
+// std::make_heap(a,b)는 정렬되지 않은 [a,b)를 힙정렬한다.
+// 이는 std::push_heap(a,++b)를 반복 호출하여 구현할 수 있다.
+template <class RandomIt>
+void make_heap(RandomIt a, RandomIt b)
+{
+    for (auto it = a; it != b;) {
+        std::push_heap(a, ++it);
+    }
+}
+
+// std::push_heap(a,b)는 [a,b-1)가 이미 max-heap이라는 가정 하에
+// 원소를 현재 b[-1]에 넣고 the max-heap property를 만족할 때까지
+// 부모 원소들을 비교하며 swap한다.
+template <class RandomIt>
+void push_heap(RandomIt a, RandomIt b)
+{
+    auto child = ((b - 1) - a);
+    while (child != 0) {
+        auto parent = (child - 1) / 2;
+        if (a[child] < a[parent]) {
+            return;
+        }
+        std::iter_swap(a + child, a + parent);
+        child = parent;
+    }
+}
+
+// std::pop_heap(a,b)는 [a,b)가 이미 max-heap이라는 가정 하에
+// a[0]과 b[-1]을 swap하여 기존의 가장 큰 원소를 맨 뒤로 보낸다.
+// 그런 다음, 자식 원소 중 더 큰 원소가 존재하면 스왑하는 과정을
+// [a,b-1)에서 the max-heap property가 성립할 때까지 반복한다.
+// 이후, b[-1]은 가장 큰 원소가 되고 [a,b-1)은 max-heap이다.
+template <class RandomIt>
+void pop_heap(RandomIt a, RandomIt b)
+{
+    using DistanceT = decltype(b - a);
+
+    std::iter_swap(a, b - 1);
+
+    DistanceT parent        = 0;
+    DistanceT new_heap_size = ((b - 1) - a);
+    while (true) {
+        auto leftchild  = 2 * parent + 1;
+        auto rightchild = 2 * parent + 2;
+        if (leftchild >= new_heap_size) {
+            return;
+        }
+        auto biggerchild = leftchild;
+        if (rightchild < new_heap_size && a[leftchild] < a[rightchild]) {
+            biggerchild = rightchild;
+        }
+        if (a[biggerchild] < a[parent]) {
+            return;
+        }
+        std::iter_swap(a + parent, b + biggerchild);
+        parent = biggerchild;
+    }
+}
+
+// std::sort_heap(a,b)는 [a,b)가 이미 max-heap이라는 가정 하에
+// std::pop_heap(a,b--)를 반복 호출해서 오름차순으로 정렬한다.
+// 즉, 첫번째 호출에서 b[-1]이 가장 큰 원소가 되고 두번째 호출에서
+// b[-2]가 두번째로 큰 원소가 되고... 이를 반복하여 오름차순으로 정렬된다.
+template <class RandomIt>
+void sort_heap(RandomIt a, RandomIt b)
+{
+    for (auto it = b; it != a; --it) {
+        pop_heap(a, it);
+    }
+}
+
+template <class RandomIt>
+void sort(RandomIt a, RandomIt b)
+{
+    make_heap(a, b);
+    sort_heap(a, b);
+}
+}
+
+//-----------------------------------------------------------------------------
+// [Merges and mergesort]
+//-----------------------------------------------------------------------------
+namespace section11
+{
+// std::inplace_merge(a,mid,b)는 [a,b)의 부분 구간 [a,mid), [mid,b)이
+// 이미 정렬되어 있다는 가정 하에 병합시켜서 정렬시킨다. 이는 다음의 병합정렬의
+// building block 역할을 한다.
+template <class RandomIt>
+void sort(RandomIt a, RandomIt b)
+{
+    auto n = std::distance(a, b);
+    if (n >= 2) {
+        auto mid = a + n / 2;
+        std::sort(a, mid);
+        std::sort(mid, b);
+        std::inplace_merge(a, mid, b);
+    }
+}
+// 여기서 inplace_merge라는 말이 추가적인 버퍼없이 병합되는 의미를 갖지만
+// 내부적으로 힙에 임시 버퍼를 생성하여 구현한다. 힙 할당에 문제가 있는 경우는
+// 이 알고리즘을 피해야 한다. 이렇게 힙에 임시 버퍼를 생성하는 알고리즘으로
+// std::stable_sort, std::stable_partition이 있다.
+// 반면에 std::merge(a,b,c,d,o)는 the non-allocating merge algorithm이다.
+// [a,b),[c,d)를 the output range defined by o 에 병합한다.
+}
+
+//-----------------------------------------------------------------------------
+// [Searching and inserting in a sorted array with std::lower_bound]
+//-----------------------------------------------------------------------------
+namespace section12
+{
+// 정렬된 구간에 대해 binary search를 이용하면 linear search 보다 빠르다.
+// std::lower_bound(a,b,v)은 오름차순으로 정렬된 [a,b)에서
+// Search for first element x st. v ≤ x. (not x < v 를 의미)
+// 만약 그러한 x가 없다면, v는 [a,b)의 모든 원소보다
+// 큰 값이 된다. 이때 b를 리턴하게 되는데, 만약 v를 b에 넣는다면 [a,b]는
+// 오름차순으로 정렬된다.
+// 반면에, std::upper_bound(a,b,v)는 오름차순으로 정렬된 [a,b)에서
+// Search first element x st. v < x.
+// 만약 그러한 x가 없다면, 위와 동일하게 b를 리턴한다.
+template <class FwdIt, class T, class C>
+FwdIt lower_bound(FwdIt first, FwdIt last, const T& value, C lessthan)
+{
+    using DiffT = typename std::iterator_traits<FwdIt>::difference_type;
+    FwdIt it;
+    DiffT count = std::distance(first, last);
+
+    while (count > 0) {
+        DiffT step = count / 2;
+        it         = first;
+        std::advance(it, step);
+        if (lessthan(*it, value)) {
+            ++it;
+            first = it;
+            count -= step + 1;
+        } else {
+            count = step;
+        }
+    }
+    return first;
+}
+template <class FwdIt, class T>
+FwdIt lower_bound(FwdIt first, FwdIt last, const T& value)
+{
+    return std::lower_bound(first, last, value, std::less<> {});
+}
+
+void example1()
+{
+    std::vector<int> vec = {3, 7};
+    for (int value : {1, 5, 9}) {
+        // Find the appropriate insertion point...
+        auto it = std::lower_bound(vec.begin(), vec.end(), value);
+        // ...and insert our value there.
+        vec.insert(it, value);
+    }
+    assert((vec == std::vector {1, 3, 5, 7, 9}));
+}
+
+void example2()
+{
+    std::vector<int> vec   = {2, 3, 3, 3, 4};
+    auto             lower = std::lower_bound(vec.begin(), vec.end(), 3);
+
+    // 첫번째 방법
+    auto upper = std::upper_bound(vec.begin(), vec.end(), 3);
+
+    // 두번째 방법: 첫번째 방법처럼 전체 구간을 검색할 필요가 없다.
+    auto upper2 = std::upper_bound(lower, vec.end(), 3);
+    assert(upper2 == upper);
+
+    // 세번째 방법: lower bound 부터 검색하면 선형검색이 더 빠를 수도 있다.
+    auto upper3 = std::find_if(lower, vec.end(), [](int v) { return v != 3; });
+    assert(upper3 == upper);
+
+    // 어떠한 방법이든 다음과 같다.
+    assert(*lower >= 3);
+    assert(*upper > 3);
+    assert(std::all_of(lower, upper, [](int v) { return v == 3; }));
+}
+}
+
+//-----------------------------------------------------------------------------
+// [Deleting from a sorted array with std::remove_if]
+//-----------------------------------------------------------------------------
+namespace section13
+{
+// 구간으로 정의하는 STL의 알고리즘들은 컨테이너에 담긴 원소들을 직접 지울
+// 수 없다. 대신에 STL의 알고리즘들은 구간의 원소들을 재배열하여
+// 제거할 항목들을 예측가능한 위치로 배치하여 추후에 컨테이너가 이들을
+// 제거하기 쉽게 만드는 역할을 한다.
+void example1()
+{
+    std::vector<int> vec = {1, 3, 3, 4, 6, 8};
+
+    // 숫자 3들을 뒤로 보낸다.
+    auto first_3 = std::stable_partition(vec.begin(), vec.end(),
+                                         [](int v) { return v != 3; });
+
+    // STL 알고리즘은 3들을 제거하지 못하는 대신 재배열한다.
+    assert((vec == std::vector {1, 4, 6, 8, 3, 3}));
+
+    // 이제, 제거할 항목들(숫자 3들)을 컨테이너의 알고리즘으로 지운다.
+    vec.erase(first_3, vec.end());
+
+    // 컨테이너 vector에서 제거되었다.
+    assert((vec == std::vector {1, 4, 6, 8}));
+}
+
+// 위의 방법은 불필요한 일을 더 하며 stable_partition가 힙에 임시 버퍼를
+// 생성하기 때문에 다음과 같은 알고리즘을 사용해야 한다.
+template <class FwdIt, class T>
+FwdIt remove(FwdIt first, FwdIt last, const T& value)
+{
+    auto out = std::find(first, last, value);
+    if (out != last) {
+        auto in = out;
+        while (++in != last) {
+            if (*in == value) {
+                // don't bother with this item
+            } else {
+                *out++ = std::move(*in);
+            }
+        }
+    }
+    return out;
+}
+void example2()
+{
+    std::vector<int> vec = {1, 3, 3, 4, 6, 8};
+
+    // 숫자 3들을 3이 아닌 수들로 덮어쒸운다.
+    auto new_end = std::remove(vec.begin(), vec.end(), 3);
+    assert((vec == std::vector {1, 4, 6, 8, 6, 8}));
+
+    // 이제 컨테이너의 알고리즘으로 제거한다.
+    vec.erase(new_end, vec.end());
+    assert((vec == std::vector {1, 4, 6, 8}));
+
+    // "erase-remove idiom"
+    // 두 단계를 한 줄로 작성한다.
+    vec.erase(std::remove(vec.begin(), vec.end(), 3), vec.end());
+
+    // 만약 주어진 수열이 매우 길고 정렬되어 있다면, 이진검색이 좋다.
+    auto first = std::lower_bound(vec.begin(), vec.end(), 3);
+    auto last  = std::upper_bound(first, vec.end(), 3);
+    // 컨테이너의 알고리즘으로 직접 원소들을 제거한다.
+    vec.erase(first, last);
+}
+// std::remove(a,b,v)는 정렬이 안되어도 되는 [a,b)에서 v와 동일한 원소들의
+// 자리에 그 뒤에 나오는 v가 아닌 원소들로 순서를 보존하여 덮어 쒸운다.
+// (v들을 쏙 빼고 남은 원소들을 그대로 왼쪽으로 밀어 붙인다.)
+// 그 후 첫번째로 제거해야할 원소를 가리키는 반복자를 리턴한다.
+// 제거해야할 원소들을 제거하려면 컨테이너의 알고리즘을 사용해야 한다.
+
+// std::unique(a,b)는 정렬이 안되어도 되는 [a,b)에서 연속된 동일한 원소들을
+// 하나만 남기고 모두 제거한다. 그리고 제거해야 할 항목의 원소를 가리키는
+// 첫번째 반복자를 리턴한다.
+void example3()
+{
+    std::vector<int> vec = {1, 2, 2, 3, 3, 3, 1, 3, 3};
+
+    // "erase-remove idiom"
+    vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
+    assert((vec == std::vector {1, 2, 3, 1, 3}));
+}
+
+// 일반적인 std::remove보다 컨테이너가 제공하는 erase member function을
+// 사용하는 것이 대부분 좋다.
+// 제거하는 순서가 중요하지 않는 경우, std::remove보다 std::unstable_remove를
+// 사용하는 것이 좋다. (아직은 STL에 적용되지 않았지만 나중에 표준화될 것이라고
+// 책에 적혀 있는데, 현 시점에도 적용되지 않은 것 같다.)
+namespace my {
+template<class BidirIt, class T>
+BidirIt unstable_remove(BidirIt first, BidirIt last, const T& value)
+{
+    while (true) {
+        // Find the first instance of "value"...
+        first = std::find(first, last, value);
+        // ...and the last instance of "not value"...
+        do {
+            if (first == last) {
+                return last;
+            }
+            --last;
+        } while (*last == value);
+        // ...and move the latter over top of the former.
+        *first = std::move(*last);
+        // Rinse and repeat.
+        ++first;
+    }
+}
+} // namespace my
+void test()
+{
+    std::vector<int> vec = { 4, 1, 3, 6, 3, 8 };
+    vec.erase(
+        my::unstable_remove(vec.begin(), vec.end(), 3),
+        vec.end()
+    );
+    assert((vec == std::vector { 4, 1, 8, 6 }));
+}
 }
