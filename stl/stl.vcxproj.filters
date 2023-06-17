@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Practice Files">
+      <UniqueIdentifier>{645b35d8-7164-4fc0-a54e-6b78021510d5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -28,6 +31,9 @@
     </ClInclude>
     <ClInclude Include="ch3-The_Iterator-Pair_Algorithms.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ch2-list.h">
+      <Filter>Practice Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

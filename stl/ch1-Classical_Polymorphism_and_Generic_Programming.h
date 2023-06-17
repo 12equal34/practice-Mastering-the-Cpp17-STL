@@ -113,7 +113,7 @@ void test()
 // 이러한 함수를 polymorphic하다고 한다.
 
 // 장점은 다형성을 사용하는 함수의 소스코드를 딱 하나만
-// 기계코드를 생성하기 때문에 메모리를 절약할 수 있다.
+// 기계코드로 생성하기 때문에 메모리를 절약할 수 있다.
 // 또한, double_each_element_polymorhic의 함수 포인터에
 // 접근할 수 있다.
 // 하지만, base class를 상속해야 하므로 진정한 일반성을 가질 순 없다.
@@ -150,9 +150,9 @@ void test()
     double_each_element(lst);
 }
 
-// ContainerModel이 반드시 지원해야하는 operators가 무엇인지
+// ContainerModel이 반드시 지원해야 하는 operators가 무엇인지
 // 명확하게 표현할 수 있다면 좋은 프로그램 디자인일 것이다.
-// 그러한 set of operations을 c++에서는 concept이라 한다.
+// 그러한 the set of requirements을 c++에서는 concept이라 부른다.
 
 // ContainerModel의 concept은 다음과 같다.
 // "1.맴버 함수 size를 가져야 한다. size는 컨테이너의 크기를 int형 또는
@@ -162,7 +162,7 @@ void test()
 //    컨테이너의 원소를 non-const reference로 리턴해야 한다."
 
 // 임의의 class가 위와 같은 Container concept에 필요한
-// set of operations를 갖는다면,
+// set of requirements를 갖는다면,
 // (예를 들어, at의 리턴 타입이 operator*=(int)를 가져야 한다.)
 // double_each_element를 사용할 수 있다.
 // 이러한 class를 a model of the Container concept 이라고 부른다.
@@ -186,7 +186,7 @@ void can_double_not_int()
 }
 
 // 이러한 이유로 classical polymorphism보다 일반화되었다.
-// classical polymorphism는 a stable interface signature안에서만
+// classical polymorphism는 a stable interface signature 안에서만
 // 다양한 동작을 결정할 수 있다. 즉, at(i)는 항상 int&를 리턴해야한다.
 // 그래서 한번이라도 signatures을 엉터리로 정의하면 좋지 않은 결과를 만든다.
 
@@ -237,14 +237,15 @@ namespace Examples_Provided_by_the_STL
         assert(number_below == 5);
     }
     // the Container는 the rangerd for-loop syntax를 지원해야 하므로
-    // begin(), end()를 포함하고 알맞는 타입을 가진 iterator를 리턴해야 한다.
-    
+    // 알맞는 타입을 가진 iterator를 리턴하는 begin(), end()를 포함해야 한다.
+
     // 중요한 사실로 generic programming에서 pred의 매개변수 elt가
     // 어떠한 타입, 그리고 값 또는 레퍼런스인지를 절대로 특정하지 않는다.
 
-    // 여태까지 container라는 표현을 사용하고 count, count_if을
+    // 여태까지 container 라는 표현을 사용하고 count, count_if 을
     // 자연스레 container-based algorithms으로 작성하였다.
-    // 이는 c++20 or c++23으로 오면서 현대적인 C++ 스타일이다.
+    // 이러한 방식으로 구현하는 것은 c++20 or c++23의 현대적인 C++ 스타일이다.
+    // 
     // c++11 이전까지는 move semantics와 move construction이 없었기 때문에
     // 직접적으로 container를 다루는 방법은 비효율적이었다.
     // 따라서, STL은 더 가벼운 iterator를 다루는 방법으로 디자인되었다.

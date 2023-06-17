@@ -138,6 +138,7 @@
   <ItemGroup>
     <ClInclude Include="ch1-Classical_Polymorphism_and_Generic_Programming.h" />
     <ClInclude Include="ch2-Iterators_and_Ranges.h" />
+    <ClInclude Include="ch2-list.h" />
     <ClInclude Include="ch3-The_Iterator-Pair_Algorithms.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

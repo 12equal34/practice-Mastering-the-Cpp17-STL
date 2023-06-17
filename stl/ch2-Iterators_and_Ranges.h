@@ -9,8 +9,9 @@
 //-----------------------------------------------------------------------------
 namespace section1
 {
-// 이전 장에서,
-// 다음과 같은 컨테이너 기반 알고리즘은
+// 이전 장에서 다음과 같은 컨테이너 기반 알고리즘은
+// array_of_ints나 std::vector에 대해서 합리적으로 동작하지만
+// list_of_ints에 대해서는 불합리적이다.
 template <typename Container>
 void double_each_element(Container& arr)
 {
@@ -18,13 +19,13 @@ void double_each_element(Container& arr)
         arr.at(i) *= 2;
     }
 }
-
-// array_of_ints나 std::vector에 대해서 합리적으로 동작하지만
-// list_of_ints에 대해서는 불합리적이다.
-// 그 이유는 size()와 at()의 구현 때문인데
+// 이유는 size()와 at()의 구현 때문이다.
 // list_of_ints::at()은 O(n)이므로 위의 알고리즘은 O(n^2)이 된다.
-// 즉, 정수 인덱스를 받는 at()은 알고리즘의 좋은 기반이 되지 못한다.
-// 컴퓨터가 데이터를 다루는 핵심적인 연산이 무엇인가? 바로 포인터이다.
+// 따라서 at() with integer indices는 해당 알고리즘에 대해
+// 컨테이너에 따라서 비효율적인 경우가 존재한다.
+// 그렇다면 컨테이너마다 데이터를 어떻게 다루어야 효율적인 알고리즘을
+// 작성할 수 있을까?
+// 컴퓨터가 데이터를 다루는 핵심적인 연산인 포인터를 관점으로 살펴본다.
 }
 
 //-----------------------------------------------------------------------------
@@ -35,16 +36,19 @@ namespace section2
 // 자료구조를 생각하지 말고 배열의 한 원소, 링크드 리스트의 한 원소, 또는
 // 트리의 한 원소를 어떻게 동일하게 다루는가? 가장 적합한 방법은 메모리 안의
 // 원소의 주소를 가리키는 포인터를 사용하는 것이다.
-//
-// c에서는 다음과 같이 작성하고,
-// (첫 원소를 가리키고 incrementing시켜서 막 원소에 도달할 때까지)
+
+// 링크드 리스트의 원소 개수를 구하는 알고리즘을
+// c에서 다음과 같이 작성한다.
 // for (node *p = lst.head_; p != nullptr; p = p->next) {
 //      if (pred(p->data)) {
 //          sum += 1;
 //      }
 // }
-// c++에서는 다음과 같이
-// the concept of incrementing은 the ++operator를 오버로드하여 작성한다.
+// p = p->next에 해당하는 부분은 포인터 p를 incrementing시키는 것과 같다.
+// 이러한 개념을 the concept of incrementing 이라 하자.
+
+// c++에서는 the concept of incrementing를 ++operator를 오버로드하여
+// p = p->next에 대응되는 부분을 ++p로 작성한다.
 
 struct list_node {
     int        data;
@@ -114,13 +118,16 @@ namespace section3
 // 위의 list iterator 예시에서 count_if의 매개변수 타입이
 // const Container&에서 Container&로 바뀌었고,
 // begin(), end()가 non-const이다. 그래서 *it가
-// int&을 리턴하는데, 하지만 const int&를 리턴해야 적합하다.
+// int&을 리턴하는데, 하지만 count_if는 값을 변경시키지 않으므로
+// const int&를 리턴하는 begin(), end()가 적합하다.
 // 따라서 const list_of_ints를 정의하여 사용하고 싶지만
-// 원래 기능대로 head_,tail_이 const가 되어 list의 원소들을 수정할 수 없고
-// 여전히 *it는 int&로 리턴한다.
-//
+// operator*의 구현에 의해 여전히 *it는 int&로 리턴한다.
+// 그래서 operator*가 const int&를 리턴하는 버전이 있어야 하지만
+// 이를 오버로드할 수 없다. 그러면 const int&으로 리턴하는 것으로
+// 수정하면 이번에는 참조 전달한 값을 수정할 수 없게 된다.
+
 // 따라서 위의 문제를 해결하기 위해 STL은 서로 다른 2개의 iterator:
-// bag::iterator, bag::const_iterator를 사용한다.
+// bag::iterator, bag::const_iterator를 사용한다. (여기서 bag은 임의의 이름)
 // non-const bag::begin()은 iterator를 리턴하고,
 // bag::begin() const는 const_iterator를 리턴한다.
 //
@@ -175,7 +182,7 @@ public:
     template <bool R>
     bool operator!=(const list_of_ints_iterator<R>& rhs) const
     {
-        return ptr_ == rhs.ptr_;
+        return ptr_ != rhs.ptr_;
     }
 
     // Support implicit conversion of iterator to const_iterator
@@ -326,8 +333,8 @@ namespace section6
 // 데이터들을 2배해서 저장할 수 있을 것이다.
 // iterartor를 다루는 것만으로 그 범위에 속하는 데이터들을
 // 전혀 영향을 주지 않기 때문에 다음과 같은 iterator를
-// 고려할 수 있다. 이것은 반복자에 속하는 데이터를 갖지 않고
-// 반복자의 복제가 무의미하다.
+// 고려할 수 있다. 이것은 반복자가 가리키는 데이터가 없고
+// 대신에 data member를 갖고 있으며, 반복자의 복제가 무의미하다.
 // not meaningfully copyable, do not point to data elements
 // in any meaningful sense한 iterator를 InputIterator 라고 한다.
 class getc_iterator
@@ -445,8 +452,9 @@ void test2()
 }
 
 // 그런데 int*과 같은 class type이 아닌
-// primitive scalar type은 member typedef을 포함할 수 없는데
-// 어떻게 구현할까? 이러한 문제는 간접층을 추가해서 해결한다.
+// primitive scalar type은 class가 아니기 때문에
+// member 자체를 만들 수가 없다.
+// 이러한 문제는 간접층을 추가해서 해결한다.
 // 곧바로 T::iterator_category로 구현하는 것이 아닌,
 // 항상 std::iterator_traits<T>::iterator_category를 통해서
 // 구현한다.
@@ -679,25 +687,25 @@ namespace section8
 //    #include <boost/iterator/iterator_facade.hpp>
 //    template <bool Const> class list_of_ints_iterator
 //       : public boost::iterator_facade
-//                       <list_of_ints_iterator<Const>, 
+//                       <list_of_ints_iterator<Const>,
 //                        std::conditional_t<Const, const int, int>,
 //                        std::forward_iterator_tag>
 //    {
 //        friend class boost::iterator_core_access;
 //        friend class list_of_ints;
 //        friend class list_of_ints_iterator<!Const>;
-// 
+//
 //        using node_pointer =
 //            std::conditional_t<Const, const list_node*, list_node*>;
 //        node_pointer ptr_;
-// 
+//
 //        explicit list_of_ints_iterator(node_pointer p)
 //            : ptr_(p)
 //        { }
-// 
+//
 //        auto& dereference() const { return ptr_->data; }
 //        void  increment() { ptr_ = ptr_->next; }
-// 
+//
 //        // Support comparison between iterator and const_iterator types
 //        template <bool R>
 //        bool equal(const list_of_ints_iterator<R>& rhs) const
@@ -712,11 +720,11 @@ namespace section8
 //            return list_of_ints_iterator<true> {ptr_};
 //        }
 //    };
-// 
+//
 // boost::iterator_facade의 첫번째 템플릿 매개변수는
 // 항상 정의하고자 하려는 클래스이다. 이러한 패턴을
 // the Curiously Recurring Template Pattern이라고 부른다.
-// 
+//
 // 위의 예시에서 ForwardIterator에 대해 2개의 관계 연산자를 대신 구현해주었다.
 // 만약 RandomAccessIterator이었다면 상당히 많은 연산자들을 대신 구현해준다.
 // 이는 the single primitive member function: distance_to를 토대로 구현된다.
