@@ -19,9 +19,11 @@
 namespace section1
 {
 // "between a and b"라는 말은 [a,b) 라는 뜻이다.
-// 일반적으로 end point of a range(여기서는 *b)를 역참조하는 것은 위험하다.
-// half-open ranges는 empty ranges를 잘 표현해준다. (from x to x 는 empty)
-// 이 방법은 기존의 for-loop의 range와 같다. 아래 예시들을 보자.
+// 일반적으로 the end point of a range(여기서는 *b)를 역참조하는 것은 위험하다.
+// half-open ranges는 empty ranges를 잘 표현해준다.
+// [x,x)는 empty reange 를 의미하게 된다.
+// 이 방법은 기존의 for-loop의 range와 같다. 
+// 아래 예시들을 보자.
 void example1()
 {
     constexpr int N = 10;
@@ -49,6 +51,7 @@ void example1()
     auto zero =
         std::count_if(std::begin(a), std::begin(a), [](int) { return true; });
 }
+
 // std::distance(a,b)는 ++연산을 a부터 b까지 세는 경우
 // std::count_if(a,b,[](auto&&){return true;})와 동등하다.
 // 만약 random-access iterators의 경우는 바로 (b-a)로 계산하므로 std::distance가
@@ -68,7 +71,8 @@ void example2()
 // 하지만 bidirectional iterators는 잘못된 순서를 전달하면 오류가 발생한다.
 // std::distance(b,a) == -std::distance(a,b)를 기대하지만 std::distance의
 // 알고리즘은 해당 반복자가 잘못된 순서인지 아닌지 모르기 때문에 segfault가
-// 발생한다. (Segmentation fault : 프로그램이 허용되지 않은 메모리 영역에 접근을
+// 발생한다. 
+// (Segmentation fault : 프로그램이 허용되지 않은 메모리 영역에 접근을
 // 시도할 때 발생하는 오류이다.)
 
 // std::count(a,b,v)는 the number of elements e for which e == v is true를
@@ -111,7 +115,9 @@ InputIterator find_if(InputIterator first, InputIterator last, UnaryPredicate p)
     }
     return last;
 }
-// (find_if는 핵심적인 "short-circuiting"의 역할이다.)
+
+// find_if algorithms은 return immediately의 종류이다.
+// 이러한 return immediately의 종류들은 "short-circuiting"의 역할을 해준다.
 template <class It, class U>
 It find_if_not(It first, It last, U p)
 {
@@ -122,8 +128,7 @@ It find(It first, It last, T value)
 {
     return std::find_if(first, last, [&](auto&& e) { return e == value; });
 }
-// find algorithms은 return immediately의 종류이다.
-// 이러한 return immediately의 종류들은 "short-circuiting"의 역할을 해준다.
+
 template <class It, class UnaryPredicate>
 bool all_of(It first, It last, UnaryPredicate p)
 {
@@ -225,7 +230,7 @@ bool equal(It1 first1, It1 last1, It2 first2, It2 last2)
     return std::equal(first1, last1, first2, last2, std::equal_to<> {});
 }
 // 여기서 std::equal_to<> {}를 사용했는데, [](auto a, auto b){return a==b;}와
-// 동일한 동작을 하고 more perfect forwarding(완전한 전송)을 수반한다.
+// 동일한 동작을 하고 more perfect forwarding(완벽 전달)을 수반한다.
 
 // 마지막으로, 많은 two-range algorithms은 one-and-a-half-range algorithms을
 // 제공한다. std::mistmatch(a,b,c,d)는 std::mismatch(a,b,c)로 작성한다면
@@ -430,7 +435,7 @@ public:
 };
 // 제공하는 맴버 함수들이 많은데 이를 지원할 수 없는 It의 타입들에 대해서
 // 해당 맴버 함수를 코드에서 사용하면 컴파일 에러가 발생한다.
-// 하지만 사용하지 않으면 인스턴스화하지 않으므로 문제 없다.
+// 하지만 사용하지 않으면 인스턴스화하지 않으므로 문제가 없다.
 
 // back_inserter에서의 설명과 마찬가지로 다음 helper function이 존재한다.
 // 즉, 타이핑이 길어지므로 make_pair와 make_tuple같은 존재다.
@@ -781,7 +786,7 @@ void reverse(BidirIt first, BidirIt last)
 // 처음으로 p(*first) == false인 pivot의 iter를 리턴한다.
 // 즉, 앞의 파티션의 end point, 뒤의 파티션의 start point이다.
 template <class BidirIt, class Unary>
-auto partition(BidirIt first, BidirIt last, Unary p)
+auto partition_(BidirIt first, BidirIt last, Unary p)
 {
     // std::find_if_not 과 동일하다.
     while (first != last && p(*first)) {
@@ -1195,34 +1200,32 @@ void example3()
 // 제거하는 순서가 중요하지 않는 경우, std::remove보다 std::unstable_remove를
 // 사용하는 것이 좋다. (아직은 STL에 적용되지 않았지만 나중에 표준화될 것이라고
 // 책에 적혀 있는데, 현 시점에도 적용되지 않은 것 같다.)
-namespace my {
-template<class BidirIt, class T>
-BidirIt unstable_remove(BidirIt first, BidirIt last, const T& value)
+namespace my
 {
-    while (true) {
-        // Find the first instance of "value"...
-        first = std::find(first, last, value);
-        // ...and the last instance of "not value"...
-        do {
-            if (first == last) {
-                return last;
-            }
-            --last;
-        } while (*last == value);
-        // ...and move the latter over top of the former.
-        *first = std::move(*last);
-        // Rinse and repeat.
-        ++first;
+    template <class BidirIt, class T>
+    BidirIt unstable_remove(BidirIt first, BidirIt last, const T& value)
+    {
+        while (true) {
+            // Find the first instance of "value"...
+            first = std::find(first, last, value);
+            // ...and the last instance of "not value"...
+            do {
+                if (first == last) {
+                    return last;
+                }
+                --last;
+            } while (*last == value);
+            // ...and move the latter over top of the former.
+            *first = std::move(*last);
+            // Rinse and repeat.
+            ++first;
+        }
     }
-}
 } // namespace my
 void test()
 {
-    std::vector<int> vec = { 4, 1, 3, 6, 3, 8 };
-    vec.erase(
-        my::unstable_remove(vec.begin(), vec.end(), 3),
-        vec.end()
-    );
-    assert((vec == std::vector { 4, 1, 8, 6 }));
+    std::vector<int> vec = {4, 1, 3, 6, 3, 8};
+    vec.erase(my::unstable_remove(vec.begin(), vec.end(), 3), vec.end());
+    assert((vec == std::vector {4, 1, 8, 6}));
 }
 }
