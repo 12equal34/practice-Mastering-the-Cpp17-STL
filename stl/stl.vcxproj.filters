@@ -34,5 +34,8 @@
     <ClInclude Include="ch3-practice.h">
       <Filter>Practice Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch4-The_Container_Zoo.h">
+      <Filter>Chapter Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
