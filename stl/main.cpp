@@ -5,4 +5,5 @@
 
 int main()
 {
+	section14::indexing_with_operator();
 }
