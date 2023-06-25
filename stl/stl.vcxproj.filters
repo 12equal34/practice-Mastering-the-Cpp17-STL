@@ -37,5 +37,8 @@
     <ClInclude Include="ch4-The_Container_Zoo.h">
       <Filter>Chapter Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch5-Vocabulary_Types.h">
+      <Filter>Chapter Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

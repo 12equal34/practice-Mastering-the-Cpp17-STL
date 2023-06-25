@@ -142,6 +142,7 @@
     <ClInclude Include="ch3-practice.h" />
     <ClInclude Include="ch4-The_Container_Zoo.h" />
     <ClInclude Include="ch3-The_Iterator-Pair_Algorithms.h" />
+    <ClInclude Include="ch5-Vocabulary_Types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
