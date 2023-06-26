@@ -40,5 +40,8 @@
     <ClInclude Include="ch5-Vocabulary_Types.h">
       <Filter>Chapter Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch6-Smart_Pointers.h">
+      <Filter>Chapter Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
