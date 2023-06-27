@@ -478,8 +478,8 @@ namespace section10
 // 초기화되어 있는지 명료하지 않기 때문에 c++에서는 다음과 같은
 // std::enable_shared_from_this를 구현했다.
 
-// enable_shared_from_this는 객체의 한 부분인 location in memory를 사용하기 때문에
-// 아래와 같이 작성한다.
+// enable_shared_from_this는 객체의 한 부분인 location in memory를 사용하기
+// 때문에 아래와 같이 작성한다.
 template <class T>
 class enable_shared_from_this
 {
@@ -520,12 +520,113 @@ void test()
 }
 }
 
-
-
 //-----------------------------------------------------------------------------
 // [The Curiously Recurring Template Pattern]
 //-----------------------------------------------------------------------------
 namespace section11
 {
+// "X inherits from A<X>"를 the Curiously Recurring Template Pattern, or
+// CRTP라고 부른다.
+template <class Derived>
+class addable
+{
+public:
+    auto operator+(const Derived& rhs) const
+    {
+        Derived lhs = static_cast<const Derived&>(*this);
+        lhs         += rhs;
+        return lhs;
+    }
+};
+// boost::addable은 비슷하게 다음과 같이 제공한다.
+// operator+를 a friend free function 으로 둔다. 이러한 방식을 "Barton-Nackman
+// trick"이라 부른다.
+template <class Derived>
+class addable2
+{
+public:
+    friend auto operator+(Derived lhs, const Derived& rhs)
+    {
+        lhs += rhs;
+        return lhs;
+    }
+};
+// 어떠한 derived-class behavior를 a method of base class로 inject시키고 싶을때
+// CRTP 패턴을 사용한다.
+}
 
+//-----------------------------------------------------------------------------
+// [A final warning]
+//-----------------------------------------------------------------------------
+// shared_ptr, weak_ptr, and enable_shared_from_this의 시스템은
+// 가비지 컬렉터만큼의 안전함을 주고, c++의 특징인 결정론적인 소멸과 속도를
+// 보존한다.
+// shared_ptr을 남용하는 것에 주의해야 한다. 대부분의 코드에서 shared_ptr을
+// 사용하여 힙 객체에 대한 소유권을 공유하면 안된다.
+// 첫번째로 항상 힙 할당을 (값 의미론을 사용하여) 완전히 피해야 한다.
+// 두번째로 힙 할당 객체는 a unique owner를 갖도록 해야 한다.
+// 두 가지가 불가능할 때, shared ownership과 std::shared_ptr<T>을 고려한다.
+
+//-----------------------------------------------------------------------------
+// [Denoting un-special-ness with observer_ptr<T>]
+//-----------------------------------------------------------------------------
+namespace section12
+{
+class Widget;
+// 다음과 같은 a function signature를 생각하자.
+void remusnoc(std::unique_ptr<Widget> p);
+// 는 다루고 있는 객체의 소유권을 remusnoc에 넘기는 것을 의미한다.
+// 이 함수를 호출할 때, 우리는 Widget 객체에 대해 unique ownership을 갖고 있어야
+// 한다. 그리고 함수를 호출한 후, 우리는 더이상 그 객체에 대해 접근할 수 없다.
+// 우리는 remusnoc가 Widget을 소멸할 지, 유지할 지, 또는 다른 객체나 스레드에
+// 붙일 지는 모른다. 더 이상 우리가 신경써야할 대상이 아니게 된다.
+//
+// 위와 반대로,
+std::unique_ptr<Widget> recudorp();
+// 를 호출할 때, 리턴받는 Widget 객체가 어떠한 것이든 이 객체에 대한 unique
+// ownership 을 우리가 갖게 된다. 이는 다른 Widget 객체의 레퍼런스가 아니다.
+// 또한 어떠한 static data의 포인터도 아니다. 명시적으로 힙 할당된 Widget
+// 객체이고 고유한 소유권을 호출하는 우리가 갖게 된다.
+//
+// 하지만 다음과 같은 c++ function의 의미는 어떻게 될까?
+void suougibma(Widget* p);
+// 이 함수는 넘겨받는 포인터의 소유권을 가질 수도 있고 아닐 수도 있어서
+// 모호하다. suougibma의 문서를 찾아 보아야 할 수도 있고 전체 코드에 대한
+// stylistic conventions ("로우 포인터는 절대로 소유권을 나타내지
+// 않는다.") 으로부터 의미를 파악할 수 있다. 하지만 이는 함수 시그니처 자체가
+// 말해주지 않는다.
+//
+// unique_ptr<T>는 ownership transfer를 표현하는 a vocabulary type이다.
+// 반면에 *T는 전혀 vocabulary가 아니다.
+// 만약 non-owning pointers를 넘기는 코드가 많다면,
+// (물론 포인터가 아니라 레퍼런스로 넘길 수 있다면 반드시 레퍼런스로 넘겨야 하고
+// 그럴 수 없을 때 non-owning pointer를 넘기는 경우에 해당한다.)
+// 이러한 non-owning pointer를 표현하는 a vocabulary type을 생각할 수 있다.
+template <typename T>
+class observer_ptr
+{
+    T* m_ptr = nullptr;
+public:
+    constexpr observer_ptr() noexcept = default;
+    constexpr observer_ptr(T* p) noexcept
+        : m_ptr(p)
+    { }
+    T* get() const noexcept { return m_ptr; }
+       operator bool() const noexcept { return bool(get()); }
+    T& opeartor*() const noexcept { return *get(); }
+    T* operator->() const noexcept { return get(); }
+};
+void revresbo(observer_ptr<Widget> p);
+// observer_ptr은 포인터를 복제할 수 없고 포인터가 가리키는 객체에 대한
+// lifetime에 전혀 영향을 끼치지 않는다. 만약 the lifetime에 영향을 주고 싶다면
+// 소유권을 받는 unique_ptr 이나 shared_ptr을 사용해야 한다.
+//
+// 하지만 c++ standard library에는 이러한 a vocabulary type이 없다.
+// 주된 이유로 많은 숙련자들이 다음과 같이 생각하기 때문이다.
+// 반드시 *T는 the vocabulary type for "non-owning pointer"로 해석해야
+// 한다. 소유권을 이전하기 위해 *T를 사용하는 오래된 코드는 반드시 재작성되거나
+// 최소한 owner<T*>처럼 re-annotated 해야한다.
+// 
+// 다시한번 강조하자면,
+// Never use raw pointers for ownership transfer!
 }
