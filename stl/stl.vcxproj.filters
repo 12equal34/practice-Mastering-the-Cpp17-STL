@@ -43,5 +43,11 @@
     <ClInclude Include="ch6-Smart_Pointers.h">
       <Filter>Chapter Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch7-Concurrency.h">
+      <Filter>Chapter Files</Filter>
+    </ClInclude>
+    <ClInclude Include="moduCode_Thread.h">
+      <Filter>Practice Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
