@@ -4,9 +4,10 @@
 // #include "ch4-The_Container_Zoo.h"
 // #include "ch5-Vocabulary_Types.h"
 // #include "ch6-Smart_Pointers.h"
-#include "moduCode_Thread.h"
+// #include "moduCode_Thread.h"
+#include "moduCode_Atomic.h"
 
 int main()
 {
-	section6::test();
+	section4::no_seq_cst::test();
 }

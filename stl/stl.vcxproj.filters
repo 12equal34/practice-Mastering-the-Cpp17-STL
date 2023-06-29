@@ -49,5 +49,8 @@
     <ClInclude Include="moduCode_Thread.h">
       <Filter>Practice Files</Filter>
     </ClInclude>
+    <ClInclude Include="moduCode_Atomic.h">
+      <Filter>Practice Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
