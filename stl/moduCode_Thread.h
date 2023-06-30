@@ -142,6 +142,7 @@ void test()
     }
 
     std::cout << "Counter 최종 값: " << counter << std::endl;
+    // 예측되는 40000이 아닌 이보다 작은 값이 나온다.
 }
 }
 
@@ -153,25 +154,29 @@ namespace section4
 void worker(int& result, std::mutex& m)
 {
     for (int i = 0; i < 10000; ++i) {
-        // 뮤텍스 m의 사용권한은 단일 쓰레드가 가질 수 있다.
-        // m.lock()은 뮤텍스 m의 사용권한을 가져온다.
+        // 뮤텍스 m의 사용권한은 단일 쓰레드만 가질 수 있다.
+        // m.lock()은 뮤텍스 m의 사용권한을 가져오기를 요청한다.
         // 그래서 m을 소유한 쓰레드가 m.unlock()을 할때까지 무한히 기다린다.
+        // 리턴하면 뮤텍스 m의 사용권한을 가져온 것이다.
         // m.unlock()은 뮤텍스 m의 사용권한을 반환한다.
 
-        m.lock();
         // 이 사이의 영역은 하나의 쓰레드에서만 유일하게 실행할 수 있는 코드
         // 영역이다. 이를 임계 영역 (critical section) 이라고 부른다.
+        //
+        // 임계영역 시작
+        m.lock();
 
         result += 1;
 
-        //
         m.unlock();
+        // 임계영역 끝
 
         // 실수로 m.unlock()을 하지 않으면 이 프로그램은 m을 갖고있지 않은
         // 쓰레드들의 .join() 호출에서 무한히 기다릴 것이라고 생각할 수 있다.
         // 하지만 그 이전에 m을 갖고 있는 쓰레드가 반복문에서 다시 m.lock()을
         // 호출하므로 자기 자신도 자신의 뮤텍스를 반환하기를 기다리게 된다. 결국
-        // 아무 쓰레드도 진행하지 않게 되는데, 이를 데드락 (deadlock)이라고
+        // 아무 쓰레드도 진행하지 않게 되어 데드락 상태가 된다.
+        // 모든 쓰레드가 진행하지 않는 상황을 데드락 (deadlock)이라고
         // 부른다.
     }
 }
@@ -186,11 +191,12 @@ void test()
         workers.emplace_back(worker, std::ref(counter), std::ref(m));
     }
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < workers.capacity(); ++i) {
         workers[i].join();
     }
 
     std::cout << "Counter 최종 값: " << counter << std::endl;
+    // 40000
 }
 
 // 실수로 m.unlock()을 빠뜨리는 문제로 데드락이 발생하는데
@@ -198,15 +204,12 @@ void test()
 void worker_with_lock_guard(int& result, std::mutex& m)
 {
     for (int i = 0; i < 10000; ++i) {
-        // 생성자가 m.lock()을 호출한다.
+        // 임계영역 시작, 생성자가 m.lock()을 호출한다.
         std::lock_guard<std::mutex> lock(m);
 
-        // critical section
         result += 1;
 
-        //
-
-        // 소멸자가 m.unlock()을 호출한다.
+        // 임계영역 끝, 소멸자가 m.unlock()을 호출한다.
     }
 }
 void test_with_lock_guard()
@@ -232,7 +235,7 @@ void test_with_lock_guard()
 void worker1(std::mutex& m1, std::mutex& m2)
 {
     for (int i = 0; i < 10000; ++i) {
-        // 현재 t1이 실행 중인데,
+        // 현재 t1이 실행 중인데, (m2의 사용권한을 갖고 있다.)
         std::lock_guard<std::mutex> lock1(m1); // t2가 m1을 갖고 있다고 하자.
         // t2가 m1을 반환할 때까지 무한히 기다린다.
 
@@ -243,7 +246,7 @@ void worker1(std::mutex& m1, std::mutex& m2)
 void worker2(std::mutex& m1, std::mutex& m2)
 {
     for (int i = 0; i < 10000; ++i) {
-        // 현재 t2가 실행 중인데,
+        // 현재 t2가 실행 중인데, (m1의 사용권한을 갖고 있다.)
         std::lock_guard<std::mutex> lock2(m2); // t1은 m2를 갖고 있다고 하자.
         // t1이 m2를 반환할 때까지 무한히 기다린다.
         // 하지만 t1이 m2를 반환하려면 t2가 m1을 반환해야 하고
@@ -293,6 +296,7 @@ void worker2_no_deadlock(std::mutex& m1, std::mutex& m2)
 
             // 현재 t2는 m1의 사용권한을 갖고자 한다.
             // 지금 바로 m1의 사용권한을 가져올 수 없다면,
+            // (여기서는 t1이 m1의 사용권한을 갖고 있을 때)
             if (!m1.try_lock()) {
                 // 현재 갖고 있는 m2의 사용권한을 반환한다.
                 m2.unlock();
@@ -336,10 +340,10 @@ void producer(std::queue<std::string>& downloaded_pages, std::mutex& m,
               int thread_index)
 {
     for (int i = 0; i < 5; ++i) {
+        // 처리해야 할 일을 가져온다.
         // 웹사이트를 다운하는데 다음과 같이 시간이 걸린다고 하자.
         std::this_thread::sleep_for(
             std::chrono::milliseconds(100 * thread_index));
-        // 처리해야 할 일을 가져온다.
         std::string content = "웹사이트: " + std::to_string(i) +
                               " from thread(" + std::to_string(thread_index) +
                               ")\n";
@@ -450,7 +454,7 @@ void consumer(std::queue<std::string>& downloaded_pages, std::mutex& m,
         cv.wait(lk, [&downloaded_pages, &num_processed] {
             return !downloaded_pages.empty() || num_processed == 25;
         });
-        
+
         if (num_processed == 25) {
             lk.unlock();
             return;

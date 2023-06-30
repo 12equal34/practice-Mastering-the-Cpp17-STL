@@ -4,6 +4,8 @@
 #include <future>
 #include <iostream>
 #include <thread>
+#include <condition_variable>
+#include <mutex>
 
 //-----------------------------------------------------------------------------
 // 동기와 비동기 실행
@@ -16,23 +18,23 @@ namespace section1
 // string txt    = read("a.txt");              // 5ms 소요 (하드디스크 읽기)
 // string result = do_something_with_txt(txt); // 5ms 소요 (cpu 연산)
 // do_other_computation(); // 5ms 소요 (cpu 연산)
-// 총 15ms가 소요된다. 
-// read 함수가 파일을 하드 디스크에서 읽어오는 동안, CPU가 기다리기 때문에 비효율적이다.
-// 이렇게 순차적으로 실행하는 작업을 동기적 (synchronous)으로 실행한다고 한다.
-// 이러한 경우에 read 함수가 하드 디스크에서 데이터를 읽어오는 동안에 CPU가
-// do_other_computation을 작업하는 것이 효율적일 것이다.
+// 총 15ms가 소요된다.
+// read 함수가 파일을 하드 디스크에서 읽어오는 동안, CPU가 기다리기 때문에
+// 비효율적이다. 이렇게 순차적으로 실행하는 작업을 동기적 (synchronous)으로
+// 실행한다고 한다. 이러한 경우에 read 함수가 하드 디스크에서 데이터를 읽어오는
+// 동안에 CPU가 do_other_computation을 작업하는 것이 효율적일 것이다.
 
 // C++의 쓰레드로 다음과 같이 구현할 수 있다.
 //		void file_read(string* result) {
-//			string txt = read("a.txt");  // 5ms 소요 (하드디스크 읽기)
-//			*result = do_something_with_txt(txt); // 5ms 소요 (cpu 연산)
+//			string txt = read("a.txt");  // 5ms 소요 (하드디스크
+//읽기) 			*result = do_something_with_txt(txt); // 5ms 소요 (cpu 연산)
 //		}
 //		int main()
 //		{
 //			string result;
 //			thread t(file_read, &result);
 //			do_other_computation();  // 5ms 소요 (cpu 연산)
-//		
+//
 //			t.join();
 //		}
 // 총 10ms가 소요된다.
@@ -40,7 +42,6 @@ namespace section1
 // 비동기적 (asynchronous) 실행이라고 부른다.
 // c++11 부터 표준 라이브러리를 통해 간단히 비동기적 실행을 할 수 있다.
 }
-
 
 //-----------------------------------------------------------------------------
 // std::promise 와 std::future
@@ -53,20 +54,60 @@ namespace section2
 // "future에 쓰레드 T가 약속된 데이터를 돌려 주겠다는 promise을 한다."
 void worker(std::promise<std::string>& p)
 {
-	p.set_value("some data");
+    // promise 객체가 갖고 있는 future 객체에 값을 넣는다.
+    p.set_value("some data");
 }
 void test()
 {
-	std::promise<std::string> p;
-	std::future<std::string> data = p.get_future();
-	std::thread t(worker, std::ref(p));
+    std::promise<std::string> p;
+    std::future<std::string>  data = p.get_future();
+    std::thread               t(worker, std::ref(p));
 
-	data.wait();
-	
-	std::cout << "받은 데이터: " << data.get() << std::endl;
+    // promise가 future에 값을 넣기 전까지 wait 함수로 기다린다.
+    data.wait();
+    // wait이 리턴하면 future에 값이 넣어진 상태이다.
 
-	t.join();
+    // get을 통해 future에 전달된 객체를 이동시킨다.
+    // 이동시키므로 절대로 두번 호출하면 안된다.
+    std::cout << "받은 데이터: " << data.get() << std::endl;
+
+    t.join();
 }
+// get은 굳이 wait을 안해도 promise가 future에 객체를 전달할 때까지
+// 기다린 후에 리턴한다.
+
+// 생산자-소비자 패턴에서
+// promise는 producer 역할을,
+// future는 consumer 역할을 수행한다.
+// 그래서 promise-future 패턴을 다음과 같이 구현할 수 있다.
+namespace promise_future_implementation
+{
+    std::condition_variable cv;
+    std::mutex              m;
+    bool                    done = false;
+    std::string             info;
+
+    void worker()
+    {
+        {
+            std::lock_guard<std::mutex> lk(m);
+            info = "some data";   // p.set_value("some data")에 대응된다.
+            done = true;
+        }
+        cv.notify_all();
+    }
+    void test()
+    {
+        std::thread t(worker);
+
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [] { return done; }); // data.wait()에 대응된다.
+        lk.unlock();
+
+        std::cout << "받은 데이터: " << info << std::endl;
+
+        t.join();
+    }
 }
 
-
+}

@@ -146,6 +146,7 @@
     <ClInclude Include="ch6-Smart_Pointers.h" />
     <ClInclude Include="ch7-Concurrency.h" />
     <ClInclude Include="moduCode_Atomic.h" />
+    <ClInclude Include="moduCode_Sync_and_Async.h" />
     <ClInclude Include="moduCode_Thread.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
