@@ -6,9 +6,10 @@
 // #include "ch6-Smart_Pointers.h"
 // #include "moduCode_Thread.h"
 // #include "moduCode_Atomic.h"
-#include "moduCode_Sync_and_Async.h"
+// #include "moduCode_Sync_and_Async.h"
+#include "moduCode_ThreadPool.h"
 
 int main()
 {
-	section4::example::test();
+	ThreadPool::example::test();
 }
