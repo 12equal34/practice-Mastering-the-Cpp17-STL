@@ -5,9 +5,10 @@
 // #include "ch5-Vocabulary_Types.h"
 // #include "ch6-Smart_Pointers.h"
 // #include "moduCode_Thread.h"
-#include "moduCode_Atomic.h"
+// #include "moduCode_Atomic.h"
+#include "moduCode_Sync_and_Async.h"
 
 int main()
 {
-	section4::no_seq_cst::test();
+	section4::example::test();
 }
