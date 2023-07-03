@@ -58,5 +58,8 @@
     <ClInclude Include="moduCode_ThreadPool.h">
       <Filter>Practice Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch12-Filesystem.h">
+      <Filter>Chapter Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
