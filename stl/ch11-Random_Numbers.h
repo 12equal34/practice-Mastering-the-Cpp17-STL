@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdlib.h>
+#include <cassert>
+
 //-----------------------------------------------------------------------------
 // Random numbers versus pseoudo-random numbers
 //-----------------------------------------------------------------------------
@@ -60,9 +63,58 @@ public:
 // counter의 low-order bits를 모으고 이들을 XOR 연산을 하여 그 결과값을
 // 운영체제의 the entropy pool에 집어 넣는다. 커널 내부의 a PRNG는 주기적으로
 // the entropy pool로부터 얻은 bits를 가지고 reseed를 한다.
-// 
+//
 // 리눅스는 the raw entropy pool을 /dev/random 에 expose한다.
 // the PRNG's output sequence는 /dev/urandom 에 expose한다.
 // c++ 표준라이브러리는 이러한 장치들에 직접 접근할 필요없게 커버해준다.
 // 이제 c++ 표준에서 제공하는 <random> library 를 공부해보자.
+}
+
+//-----------------------------------------------------------------------------
+// The problem with rand()
+//-----------------------------------------------------------------------------
+namespace section2
+{
+// 옛날 C방법으로 rand()를 사용했다.
+// rand()는 a uniformly distributed integer in the [0, RAND_MAX] range를
+// 리턴한다. the internal state는 srand(seed_value)를 통해 seeding 한다.
+namespace classic_code_to_generate_a_random_number
+{
+    // #include <stdlib.h>
+
+    // [0,x) 범위의 무작위 정수를 생성한다.
+    int randint0(int x) { return rand() % x; }
+    // 첫번째 문제로, rand()는 [0,32767] 범위에서 균일하게 값을 리턴하므로
+    // randint0(10)은 [0,7] 범위의 수들이 8 또는 9보다, 3276번당 한번 꼴로 더
+    // 나오게 된다.
+
+    // 두번째 문제로, rand()는 global state에 접근하므로
+    // 모든 쓰레드가 같은 RNG를 공유하므로 쓰레드에 안전하지 않다. c++11에서
+    // global mutex lock을 사용한다면 쓰레드에 안전하지만 성능에 문제가 된다.
+
+    // 세번째 문제로, rand()는 global-statefulness하므로 어떠한 위치의 어떠한
+    // 함수든지 rand()를 호출하여 the state를 변경할 수 있다. 그래서 a
+    // unit-test-driven environment에서 사용할 수 없다.
+    int heads(int n)
+    {
+        // DEBUG_LOG("heads");
+        int result = 0;
+        for (int i = 0; i < n; ++i) {
+            result += (rand() % 2);
+        }
+        return result;
+    }
+    void test_heads()
+    {
+        srand(17);
+        int result = heads(42);
+        assert(result == 27);
+    }
+    // 중간에 다른 스레드에서 rand()를 호출한다면
+    // result의 결과값이 변경되어 test를 방해하게 된다.
+    // 또한 DEBUG_LOG 에 rand()의 호출을 추가하거나 제거하면 변경된다.
+}
+// the C library의 문제점은 a truly uniform distribution를 제공하지 못하고
+// 근본적으로 global variables에 의존한다는 점이다.
+// <random> 에서는 어떻게 이러한 문제들을 해결하는 지 살펴보자.
 }
