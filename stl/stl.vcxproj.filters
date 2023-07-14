@@ -61,5 +61,8 @@
     <ClInclude Include="ch12-Filesystem.h">
       <Filter>Chapter Files</Filter>
     </ClInclude>
+    <ClInclude Include="ch11-Random_Numbers.h">
+      <Filter>Chapter Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
