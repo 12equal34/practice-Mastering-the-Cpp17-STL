@@ -163,6 +163,9 @@ void example()
 {
     std::random_device rd;
     unsigned int       seed = rd();
+
+    // 32-bits unsigned int 의 범위와 동일하다.
+    // 0u <= seed <= std::numeric_limits<unsigned int>::max()
     assert(rd.min() <= seed && seed <= rd.max());
 }
 // std::random_device는 완벽히 UniformRandomBitGenerator concept을 따르지는
@@ -196,4 +199,49 @@ void example1()
 }
 // std::mt19937의 default constructor는 its internal state를 잘 알려진 표준
 // 값들로 설정하며 플랫폼에 상관없이 항상 같은 the output sequence를 보장한다.
+
+// 생성자에 a seed를 전달하여 다른 output sequence를 얻는다.
+// 다음과 같이 두가지 방법이 있다.
+template <class It>
+struct SeedSeq { // 이렇게 직접 작성하거나 std::seed_seq를 사용해도 된다.
+    It begin_;
+    It end_;
+public:
+    SeedSeq(It begin, It end)
+        : begin_(begin),
+          end_(end)
+    { }
+
+    template <class It2>
+    void generate(It2 b, It2 e)
+    {
+        assert((e - b) <= (end_ - begin_));
+        std::copy(begin_, begin_ + (e - b), b);
+    }
+};
+void method1()
+{
+    std::random_device rd;
+    uint32_t           numbers[624];
+    std::generate(numbers, std::end(numbers), std::ref(rd));
+
+    SeedSeq      sseq(numbers, std::end(numbers));
+    std::mt19937 g(sseq);
+}
+
+void method2()
+{
+    std::random_device rd;
+    std::mt19937       g(rd());
+    // rd가 생성하는 truly random 32-bits integer로 충분하다.
+    // 32는 19937보다 훨씬 작고,
+    // 대략 2^32 = 4*10^9 개의 seeds 마다 다른 output sequences를 만들 수 있다.
+    // 만약 the level of predictability가 중요하다면,
+    // 메르센 트위스터 알고리즘은 암호학적으로 안전하지 않음에 유의해야 한다.
+    // 리버스 엔지니어링을 통해 seed에 대한 19937 bits 를 파악하여 다음의 모든
+    // output을 예측할 수 있다.
+    // 만약 a cryptographically secure pseudo-random number generator(CSPRNG)가
+    // 필요하다면, AES-CTR or ISAAC 같은 c++표준에서 제공하지 않는 것들을 사용해야
+    // 한다. CSPRNG의 구현을 UniformRandomBitGenerator Model로 wrap해야 한다.
+}
 }
