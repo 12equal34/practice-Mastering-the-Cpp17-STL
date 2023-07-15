@@ -148,7 +148,7 @@ void example_std_array()
     using std::swap;
     swap(arr, other);
 
-    assert(&arr != &arr); // different addresses
+    assert(&arr != &other); // different addresses
     assert(arr == other); // lexicographically equal
     assert(arr >= other);
 }
@@ -960,14 +960,14 @@ void example()
     assert((*(it++) == Pair("hello", "dolly")));
     assert((*(it++) == Pair("quick", "brown")));
 
-    std::multimap<std::string, std::string> mm = {
+    std::multimap<std::string, std::string> mm2 = {
         {"hello", "world"},
         {"quick", "brown"},
         {"hello", "dolly"},
     };
-    assert(mm.count("hello") == 2);
-    mm.erase("hello"); // "hello"를 키로 갖는 모든 원소를 삭제한다.
-    assert(mm.count("hello") == 0);
+    assert(mm2.count("hello") == 2);
+    mm2.erase("hello"); // "hello"를 키로 갖는 모든 원소를 삭제한다.
+    assert(mm2.count("hello") == 0);
 }
 // multi 버전은 operator[]가 존재하지 않는다.
 }
