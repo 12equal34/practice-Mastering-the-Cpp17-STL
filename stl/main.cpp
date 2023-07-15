@@ -12,5 +12,5 @@
 
 int main()
 {
-	section6::example1();
+	section11::test();
 }
