@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <cassert>
+#include <random>
 
 //-----------------------------------------------------------------------------
 // Random numbers versus pseoudo-random numbers
@@ -117,4 +118,82 @@ namespace classic_code_to_generate_a_random_number
 // the C library의 문제점은 a truly uniform distribution를 제공하지 못하고
 // 근본적으로 global variables에 의존한다는 점이다.
 // <random> 에서는 어떻게 이러한 문제들을 해결하는 지 살펴보자.
+}
+
+//-----------------------------------------------------------------------------
+// Solving problems with <random>
+//-----------------------------------------------------------------------------
+namespace section3
+{
+// <random> header는 2개의 core concepts을 제공한다.
+// 1. A generator    : a class modeling the UniformRandomBitGenerator concept
+// 2. A distribution : a class modeling the RandomNumberDistribution concept
+//
+// A generator는 the internal state of a PRNG를 a C++ object로 캡슐화하고
+// a next output member function을 operator()()로 제공한다.
+// A distribution은 a generator의 output을 필터링하는 종류로서,
+// 특정 수학적인 분포로 규정되고 특정 범위에 제한되는 데이터 값들을 얻는다.
+
+// <random> header는 총 7개의 generator와 20개의 distribution types을 포함한다.
+// 대부분은 templates으로 많은 템플릿 매개변수를 취한다.
+}
+
+//-----------------------------------------------------------------------------
+// Dealing with generators
+//-----------------------------------------------------------------------------
+namespace section4
+{
+// Given any generator object g,
+// g(): the internal state를 뒤죽박죽 만들고 its next output을 리턴한다.
+// g.min(): g()의 the smallest possible output을 리턴한다.
+// g.max(): g()의 the largest possible output을 리턴한다.
+// g.discard(n): the internal state를 n번 뒤죽박죽 만든다. g()를 n번 호출하되
+//               결과값은 무시한 효과와 같다.
+}
+
+//-----------------------------------------------------------------------------
+// Truly random bits with std::random_device
+//-----------------------------------------------------------------------------
+namespace section5
+{
+// std::random_device는 template이 아닌 a generator이다.
+// default constructor를 통해 인스턴스를 생성하면 operator()를 통해 a uniformly
+// distributed unsigned integer in [rd.min(), rd.max()]를 생성할 수 있다.
+void example()
+{
+    std::random_device rd;
+    unsigned int       seed = rd();
+    assert(rd.min() <= seed && seed <= rd.max());
+}
+// std::random_device는 완벽히 UniformRandomBitGenerator concept을 따르지는
+// 않는다. 복제 및 이동이 불가능하다.
+// a truly random generator인 std::random_device는 보통 short-lived instance로
+// 만들어서 a seed for a long-lived PRNG를 생성할 용도로 사용한다.
+}
+
+//-----------------------------------------------------------------------------
+// Pseudo-random bits with std::mt19937
+//-----------------------------------------------------------------------------
+namespace section6
+{
+// 메르센 트위스터 알고리즘은 a whole family of related PRNGs를 정의한다.
+// 마치 템플릿과 비슷하다. 그중 가장 흔하게 사용되는 member of the family는
+// MT19937이다. the size in bits of the Twister's internal state를 의미한다.
+// 모든 가능한 state를 돌면 다시 시작부분으로 돌아가므로 주기성을 갖는다.
+// the period of the MT19937 generator는 2^19937 - 1 이다.
+// 첫번째 절에서 SimplePRNG는 32bits의 state를 가지므로 주기가 2^31 이다.
+
+// std::mersenne_twister_engine<...> 를 통해 메르센 트위스터 알고리즘을
+// 사용한다. 하지만 직접적으로 템플릿을 사용하지 않고 편의상 std::mt19937을
+// 사용한다.
+void example1()
+{
+    std::mt19937 g; // default constructor는
+    assert(g.min() == 0 && g.max() == 4294967295);
+    assert(g() == 3499211612);
+    assert(g() == 581869302);
+    assert(g() == 3890346734);
+}
+// std::mt19937의 default constructor는 its internal state를 잘 알려진 표준
+// 값들로 설정하며 플랫폼에 상관없이 항상 같은 the output sequence를 보장한다.
 }

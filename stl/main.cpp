@@ -7,9 +7,10 @@
 // #include "moduCode_Thread.h"
 // #include "moduCode_Atomic.h"
 // #include "moduCode_Sync_and_Async.h"
-#include "moduCode_ThreadPool.h"
+//#include "moduCode_ThreadPool.h"
+#include "ch11-Random_Numbers.h"
 
 int main()
 {
-	ThreadPool::example::test();
+	section6::example1();
 }
