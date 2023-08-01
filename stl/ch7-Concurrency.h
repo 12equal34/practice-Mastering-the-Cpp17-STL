@@ -16,7 +16,7 @@ namespace section1
 // 만약 실제 메모리에 직접 접근하길 원한다면, volatile을 사용해도 무방하다.
 
 // volatile의 공식적인 의미는 volatile accesses가 추상적인 머신의 규칙들을
-// 엄격히 따라서 평가된다. 즉, 컴파일러가 volatile accesses에
+// 엄격히 따라서 평가한다는 것이다. 즉, 컴파일러가 volatile accesses에
 // 대한 명령어들을 재배치하거나 하나의 명령어로 접근하지 못하게 한다.
 // 그래서,
 // volatile int& x = memory_mapped_register_x();
@@ -168,7 +168,7 @@ void thread_C()
 // a.store(shortlived); // atomic store
 // 이 방법이 권장된다.
 //
-// b.stort(a.load())로 한 줄에 작성할 수 있지만, 이렇게 작성하지 말아야 한다.
+// b.store(a.load())로 한 줄에 작성할 수 있지만, 이렇게 작성하지 말아야 한다.
 // 동시에 호출하는 것으로 착각할 수 있다.
 }
 
@@ -188,30 +188,62 @@ void example()
     std::atomic<int> a = 6;
     // a *= 9; // *= 연산은 정의되지 않았다. 그러므로 컴파일 에러.
 
+    // a compare-exchange loop
     int expected, desired;
     do {
         expected = a.load();
         desired  = expected * 9;
     } while (!a.compare_exchange_weak(expected, desired));
-    // 현재 값이 expected과 동일하면, 값을 desired로 설정한다.
-    // (a read-modify-write operation)
-    // 현재 값이 expected와 (다른 쓰레드가 접근해서) 다르면,
-    // 값을 expected 으로 load한다. (a load operation)
+
+    // a.compare_exchange_weak는
+    // 현재 a의 값이 expected와 동일하다면, 이 값을 desired에 저장하고
+    // true를 리턴한다.
+    // 현재 a의 값이 expected와 (다른 쓰레드가 접근해서) 다르면, 이 값을
+    // desired에 저장하지 않고 expected에 저장하고 false를 리턴한다.
+    //
+    // 만약 false를 리턴하면 다시 loop 본문으로 돌아가므로
+    // 다시 현재 a의 값을 expected으로 load하여 이 과정을 반복한다.
+    // (이미 compare_exchange_weak에서 expected = a.load()가
+    // 호출되었기 때문에 여기서는 중복해서 한번 더 호출하고 있다.)
 
     // 위의 루프를 마치면,
     // a의 값은 atomically multiplied by 9가 된다.
 }
 
-// 위의 연산은 expected가 reference 전달이므로 다음과 같이
-// 간결하게 작성할 수 있다.
+// 위에서는 a.compare_exchange_weak의 false 리턴 이후에
+// expected = a.load()를 한번 더 호출하고 있다.
+// 이를 해결하기 위해 a.compare_exchange_weak는 expected를 참조 전달하므로
+// 다음과 같이 간결하게 작성할 수 있다.
 void example2()
 {
     std::atomic<int> a = 6;
-    // a *= 9; *= 연산은 정의되지 않았다.
+
+    // a compare-exchange loop
     int expected = a.load();
     while (!a.compare_exchange_weak(expected, expected * 9))
-        ;
+        ; // desired 또한 필요하지 않다.
 }
+
+// the atomic variable a가 다른 쓰레드에 의해 자주 수정되지 않는다면
+// a compare-exchange loop를 하는 것에 유해성이 없다.
+// 그러나 빈번하게 수정된다면 the loop를 성공할 때까지 시간이 오래 걸리게 된다.
+// 또한 starvation of the looping thread가 나타날 수 있다.
+// (기아상태: 특정 프로세스의 우선 순위가 낮아서 원하는 자원을 계속해서 가지지
+// 못함. 여기서는 계속해서 the loop를 돌 것이다.)
+
+// a의 값이 변할 때 compare-exchange는 false를 리턴하고 루프를 다시 돌므로
+// 어떤 쓰레드는 더 많은 코드를 진행하게 된다.
+// Compare-exchange loops는 그 자체로 프로그램을 아무도 진행을 못하는 상태인
+// livelock 상태를 만들지는 않는다.
+
+// 하지만 일반적으로 위와 같은 행동을 걱정할 필요 없다.
+// 왜냐하면 이는 really high contention에서의 상황이고
+// 심지어 이러한 상황에서 어떠한 최악의 문제를 만들지 않는다.
+
+// 여기서는 how you can use a compare-exchange loop to implement complicated,
+// non-built-in "atomic" operations on atomic<T> objects를 알아가면 된다.
+// a.compare_exchange_weak(expected, desired)는
+// "if a has the expected value, give it the desired value."를 기억해야 한다.
 }
 
 //-----------------------------------------------------------------------------
@@ -250,7 +282,7 @@ namespace section5
 // 그래서 두개의 쓰레드가 std::string에 동시적으로 접근하면, 절대로
 // "halfway assigned" state를 관찰할 수 없게 해야 한다.
 // 이를 구현하는 가장 좋은 방법은 std::mutex를 사용하는 것이다.
-// mutex는 "mutal exclusion"에서 따온 이름이다.
+// mutex는 "mutual exclusion"에서 따온 이름이다.
 
 // [중요]
 // A mutex acts a way to ensure that only one thread is allowed into a
@@ -258,42 +290,48 @@ namespace section5
 // 그래서 "thread A is executing this code"와
 // "thread B is executiing this code"는 mutually exclusive possible하다.
 
-// a critical section의 시작은 we take a lock on the associated mutex.
-// the critical section의 끝은 we release the lock 에 대응한다.
-// The library는 두개의 쓰레드가 the same mutex를 the same time에 hold locks을
-// 하지 않도록 만들었다.
+// a critical section의 시작은 "we take a lock on the associated mutex.",
+// the critical section의 끝은 "we release the lock" 에 대응한다.
+// The library는 두 개의 이상의 쓰레드가 the same mutex를 the same time에
+// holding locks을 하지 않도록 만들었다.
 // 쓰레드 A가 이미 holding lock하면, 쓰레드 B는 A가 the critical section을
 // 나가서 the lock을 release할 때까지, 반드시 wait해야 한다. 그래서 A가 lock을
-// 갖는 동안에 쓰레드 B의 진행이 blocked된다. 이러한 현상을 waiting or
+// 갖는 동안에 쓰레드 B의 진행은 blocked된다. 이러한 현상을 waiting or
 // blocking이라 말한다.
 
 // "Taking a lock on a mutex"는 "locking the mutex"로,
 // "releasing the lock"은 "unlocking the mutex"로 간편하게 말한다.
 
-// 가끔 a mutex가 현재 locked인지 .try_lock()을 통해 알 수 있다.
-// 만약 locking the mutex하면 true를 리턴하고,
+// .try_lock()는
+// 만약 a lock을 습득할 수 있으면 locking the mutex하고 true를 리턴한다.
 // 만약 already locked by some thread이면 false를 리턴한다. (기다리지 않는다.)
 
-// a mutex를 통해 a section of code를 통제할 때, the lifetime semantics of the
-// mutex object itself를 고려해야 한다.
-// 해당 뮤텍스를 사용하길 원하는 모든 a section of code에게 visible하도록 a
-// single mutex object를 어느곳에 두어야 할까?
+// 자바에서는 객체들이 각자의 mutex를 갖고 있어서 자신의 synchronized block을
+// 구현한다. 반면 C++은 a mutex가 그 자체로 객체 타입이다.
+// 그래서 mutex를 a section of code를 컨트롤하기 위해 사용하길 원한다면,
+// the lifetime semantics of the mutex object itself를 고려해야 한다.
+// 즉, 해당 뮤텍스를 사용하길 원하는 모든 sections of the code에게 visible하도록
+// a single mutex object를 어느 위치에 두어야 하는가?
 
+// 단순히 one critical section that needs protection에 대해서는
+// 다음처럼 a mutex를 a function scoped static variable로 구현한다.
 namespace in_a_function_scoped_static_variable
 {
     void log(const char* message)
     {
         static std::mutex m;
-        m.lock(); // avoid interleaving messages on stdout
+        m.lock(); // stdout에 다른 메시지들이 서로 끼워넣어지는 상황을 피한다.
         puts(message);
         m.unlock();
     }
-    // 여기서 static 키워드는 상당히 중요하다.
+    // 여기서 static 키워드는 상당히 중요하다!
     // 만약 이를 생략한다면, the same mutex object를 보장하지 않는다.
     // 매번 쓰레드마다 구분되는 mutex objects를 locking and unlocking 하므로
     // the library는 아무 일도 하지 않게 된다.
 }
 
+// 서로 다른 두 함수가 상호 배제(mutually exclusive)해야 하는 경우
+// 다음처럼 a mutex를 a global variable로서 두 함수에게 visible하게 한다.
 namespace in_a_global_variable
 {
     static std::mutex m;
@@ -312,12 +350,15 @@ namespace in_a_global_variable
     }
     // log1, log2 함수를 상호 배제적으로 실행할 수 있다.
     // 같은 시간에 오직 하나의 쓰레드만 log1 또는 log2의 코드를 실행할 수 있다.
-
-    // the global variable보다는 a class type을 만들어서 구현하는 것이 좋다.
 }
 
+// 그러나 the global variable는 제거해야할 대상이기 때문에
+// 다음처럼 a mutex를 멤버변수로 갖는 a class type을 만들어서 구현한다.
 namespace a_member_variable_of_a_class
 {
+    // 같은 Logger 객체에 대한 동시적 접근들은 같은 m_mtx에 대해 lock을 한다.
+    // 하지만 서로 다른 Logger 객체들의 메시지들은 서로 끼워넣어지는 상황이 생길
+    // 수 있다.
     struct Logger {
         std::mutex m_mtx;
 
@@ -418,10 +459,35 @@ public:
 // 만약 코드블록의 중간에 lock의 acquire or release가 필요할 때 유용하다.
 
 // unique_lock은 movable하므로 null or empty state를 가져야 한다.
-// 대부분의 경우 lock을 이동시킬 필요가 없다. 그러한 경우는
+// 대부분의 경우 lock을 이동시킬 필요가 없다. 대부분의 경우는
 // 어떤 스코프의 시작에서 lock하고, 그 스코프의 끝에서 unlock하는 경우다.
 // 이때는 단순히 std::lock_guard<M>을 사용한다.
-// std::lock_guard<M>은 not movable하고 .lock(), .unlock()이 정의되지 않았다.
+// std::lock_guard<M>은 not movable하고 .lock(), .unlock()가 없기 때문에
+// 소멸자는 조건 검사없이 unlock the mutex를 한다.
+
+// unique_lock, lock_guard 모두 the kind of mutex being locked를 템플릿
+// 매개변수로 받는다. (대부분 std::mutex를 사용한다.)
+// c++17의 class template argument deduction 덕분에 std::unique_lock을
+// <std::mutex>를 붙이는 것 없이 사용할 수 있다.
+// 하지만 독자에게 mutex라는 정보를 주기 위해 붙여서 작성하는 것을 추천한다.
+// 이는 저자의 생각이고 내 생각에는 연역해서 작성하는 것이 좋아보인다.
+// 다음은 std::lock_guard의 예제이다.
+struct Lockbox {
+    std::mutex m_mtx;
+    int        m_value = 0;
+
+    void locked_increment()
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        m_value += 1;
+    }
+
+    void locked_decrement()
+    {
+        std::lock_guard lk(m_mtx); // c++17
+        m_value -= 1;
+    }
+};
 }
 
 //-----------------------------------------------------------------------------
@@ -471,21 +537,140 @@ public:
 // reading from ths->m_count in the consumer thread에서 race 경쟁하게 된다.
 // 즉, A가 writing하고 있는 와중에 D가 reading하려고 시도할 수 있다.
 
-// B와 C에서도 표면적으로 비슷하지만... 여기부터 다시 작성해야한다.
+// B와 C에서도 표면적으로 비슷해보이지만 C는 lock을 할 필요가 없다.
+// 하지만 D는 lock을 해야한다.
+// 왜냐하면 B와 C는 같은 the single consumer thread에서 실행되기 때문에
+// 절대로 동시에 실행될 수 없다. (프로그램이 주석의 내용을 따른다면 그렇지만
+// 실제 작업에서는 종종 실수로 틀리게 된다.)
 
-// A better way is via a nested struct definition:
-// (to place the mutex in the tightest possible relationship to the variables
-// it "guards.")
-class StreamingAverage
+// locking m_mtx는 m_sum, m_count에 접근할 때 필요하고 m_last_average에
+// 접근할 때 필요하지 않다.
+// 이 클래스가 복잡해지면 몇 개의 mutexes를 가질 수 있다.
+// (물론 이는 the Single Responsibility Principle을 위반하고, 더 작은
+// components로 refactoring하는게 이득이다.)
+// 뮤텍스들을 다룰 때 제일 좋은 practice는 해당 뮤텍스를, 이것이 가드하고 있는
+// the variables에 대해 가장 타이트한 관계를 갖도록 위치시키는 것이다.
+//
+// 한가지 방법은 조심스럽게 이름을 짓는 것이다.
+namespace via_careful_naming
 {
-    struct
+    class StreamingAverage
     {
-        double sum = 0;
-        int count = 0;
-        std::mutex mtx;
-    } m_guarded_sc;
-    double m_last_average = 0;
+        double m_sum          = 0;
+        int    m_count        = 0;
+        double m_last_average = 0;
+        std::mutex m_sum_count_mtx; // 이름에서 무엇을 가드하는지 알 수 있다.
 
-    // ...
-};
+        // ...
+    };
+}
+// 더 나은 방법은 a nested struct을 정의하는 것이다.
+namespace via_a_nested_struct_definition
+{
+    class StreamingAverage
+    {
+        struct {
+            double     sum   = 0;
+            int        count = 0;
+            std::mutex mtx;
+        } m_guarded_sc;
+        double m_last_average = 0;
+
+        // ...
+    };
+    // 코드의 목적은 프로그래머가 this->m_guarded_sc.sum을 작성하게 하여
+    // 그 사람이 this->m_guarded_sc.mtx를 lock해야함을 상기시키는 것이다.
+    // "anonymous struct members"를 사용하여 m_guarded_sc를 타이핑하는 것을
+    // 피할 수 있지만 원하던 바가 아니다.
+}
+
+// an RAII handle을 리턴하여 private members를 오직 뮤텍스가 lock되었을 때만
+// 접근할 수 있게 한다.
+namespace more_bulletproof_but_somewhat_inflexible
+{
+    template <class Data>
+    class Guarded
+    {
+        std::mutex m_mtx;
+        Data       m_data;
+
+        class Handle
+        {
+            std::unique_lock<std::mutex> m_lk;
+            Data*                        m_ptr;
+        public:
+            Handle(std::unique_lock<std::mutex> lk, Data* p)
+                : m_lk(std::move(lk), m_ptr(p))
+            { }
+            auto operator->() const { return m_ptr; }
+        };
+    public:
+        Handle lock()
+        {
+            std::unique_lock lk(m_mtx);
+            return Handle {std::move(lk), &m_data};
+        }
+    };
+
+    class StreamingAverage
+    {
+        struct Guts {
+            double m_sum   = 0;
+            int    m_count = 0;
+        };
+        Guarded<Guts> m_sc;
+        double        m_last_average = 0;
+
+        // ...
+
+        double get_current_average()
+        {
+            auto h         = m_sc.lock();
+            m_last_average = h->m_sum / h->m_count;
+            return m_last_average;
+        }
+
+        // 멤버 함수들은 locking m_mtx하지 않고는 m_sum에 접근할 수 없다.
+        // 그리고 m_sum에 접근하려면 오직 the RAII Handle type을 통해서만
+        // 가능하다.
+    };
+}
+
+// 여기까지는 가장 단순한 "forget to lock the mutex" cases를 다루었다.
+// 아직 해결하지 않은 다양한 lock과 관련된 버그들이 존재한다.
+// 위의 get_current_average를 다음처럼 작성해보자.
+namespace rewriting_get_current_average
+{
+    class StreamingAverage
+    {
+        template <class Data>
+        using Guarded = more_bulletproof_but_somewhat_inflexible::Guarded<Data>;
+        struct Guts {
+            double m_sum   = 0;
+            int    m_count = 0;
+        };
+        Guarded<Guts> m_sc;
+        double        m_last_average = 0;
+
+        // ...
+
+        double get_sum() { return m_sc.lock()->m_sum; }
+
+        int get_count() { return m_sc.lock()->m_count; }
+
+        double get_current_average()
+        {
+            // a gap between the read of m_sum and the read of m_count가
+            // 생긴다. 그리고 만약 이 버그를 고치기 위해 아래의 주석을 추가하면
+            // auto h = m_sc.lock();
+            // 같은 뮤텍스를 두 번째 lock할 때 deadlock 상태가 된다.
+            // (뮤텍스는 lock을 할 때 이미 locked되어 있으면 block하고
+            /// 이 뮤텍스가 unlock하기를 기다린다.)
+            return get_sum() / get_count();
+        }
+    };
+    // 절대로 이미 갖고있는 lock을 한번 더 lock하면 안된다.
+    // 코드의 디자인이 이러한 방식을 피할 수 없다면,
+    // recursive_mutex를 사용한다.
+}
 }
