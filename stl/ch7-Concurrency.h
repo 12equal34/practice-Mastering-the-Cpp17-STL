@@ -5,6 +5,8 @@
 #include <cassert>
 #include <condition_variable>
 #include <mutex>
+#include <shared_mutex>
+#include <chrono>
 
 //-----------------------------------------------------------------------------
 // [The problem with volatile]
@@ -600,7 +602,8 @@ namespace more_bulletproof_but_somewhat_inflexible
             Data*                        m_ptr;
         public:
             Handle(std::unique_lock<std::mutex> lk, Data* p)
-                : m_lk(std::move(lk), m_ptr(p))
+                : m_lk(std::move(lk)),
+                  m_ptr(p)
             { }
             auto operator->() const { return m_ptr; }
         };
@@ -673,4 +676,212 @@ namespace rewriting_get_current_average
     // 코드의 디자인이 이러한 방식을 피할 수 없다면,
     // recursive_mutex를 사용한다.
 }
+}
+
+//-----------------------------------------------------------------------------
+// Special-purpose mutex types
+//-----------------------------------------------------------------------------
+namespace section8
+{
+// std::recursive_mutex는 하나의 쓰레드가 여러번 lock을 할 수 있다.
+// 내부적으로 lock을 한 만큼 참조 횟수를 센다. 만약 다른 쓰레드가 lock을 하면
+// lock을 갖고 있는 쓰레드가 참조 횟수만큼 unlock을 할 때까지 block한다.
+
+// std::timed_mutex는 <chrono>와 상호작용을 한다.
+// .try_lock()뿐만 아니라 .try_lock_for()와 .try_lock_until()을 제공한다.
+// 예를 들어,
+namespace examples
+{
+    void example_of_try_lock_for()
+    {
+        using namespace std::chrono_literals;
+
+        std::timed_mutex  m;
+        std::atomic<bool> ready = false;
+
+        std::thread thread_b([&]() {
+            std::lock_guard lk(m);
+            puts("Thread B got the lock.");
+            ready = true;
+            std::this_thread::sleep_for(100ms);
+        });
+
+        while (!ready) {
+            puts("Thread A is waiting for thread B to launch.");
+            std::this_thread::sleep_for(10ms);
+        }
+
+        while (!m.try_lock_for(10ms)) {
+            puts("Thread A spent 10ms trying to get the lock and failed.");
+        }
+
+        puts("Thread A finally got the lock!");
+        m.unlock();
+
+        thread_b.join();
+    }
+
+    void example_of_try_lock_until()
+    {
+        using namespace std::chrono_literals;
+
+        std::timed_mutex  m1, m2;
+        std::atomic<bool> ready = false;
+
+        std::thread thread_b([&]() {
+            std::unique_lock lk1(m1);
+            std::unique_lock lk2(m2);
+            puts("Thread B got the locks.");
+            ready = true;
+            std::this_thread::sleep_for(50ms);
+            lk1.unlock();
+            std::this_thread::sleep_for(50ms);
+        });
+
+        while (!ready) {
+            std::this_thread::sleep_for(10ms);
+        }
+
+        auto start_time = std::chrono::system_clock::now();
+        auto deadline   = start_time + 100ms;
+
+        bool got_m1     = m1.try_lock_until(deadline);
+        auto elapsed_m1 = std::chrono::system_clock::now() - start_time;
+
+        bool got_m2     = m2.try_lock_until(deadline);
+        auto elapsed_m2 = std::chrono::system_clock::now() - start_time;
+
+        auto count_ms = [](auto&& d) -> int {
+            using namespace std::chrono;
+            return duration_cast<milliseconds>(d).count();
+        };
+
+        if (got_m1) {
+            printf("Thread A got the first lock after %dms.\n",
+                   count_ms(elapsed_m1));
+            m1.unlock();
+        }
+
+        if (got_m2) {
+            printf("Thread A got the second lock after %dms.\n",
+                   count_ms(elapsed_m2));
+            m2.unlock();
+        }
+
+        thread_b.join();
+    }
+}
+
+// std::recursive_timed_mutex는
+// recursive_mutex와 timed_mutex를 합친 것과 비슷하다.
+
+// std::shared_mutex 는 아마도 이름이 별로인데, 대부분의
+// concurrency textbooks에서는 a read-write lock (a rwlock or
+// readers-writer lock)으로 불린다.
+// .lock()은 a exclusive("write") lock 을 의미하고
+// .lock_shared()는 a non-exclusive("read") lock을 의미한다.
+//
+// 서로 다른 쓰레드들이 같은 시간에 a lock을 쓰지 않고
+// 읽기만 한다면 문제가 없다.
+// 반면에 the lock을 쓴다면 다른 쓰레드에서 읽거나 쓰면 안된다.
+// If anybody is reading, then nobody can be writing.
+// If anybody is writing, then nobody can be doing anyting ele.
+// 이는 근본적으로 c++ memory model의 "race conditions"를 정의하는 규칙과 같다.
+// race conditions: 두 개의 쓰레드가 같은 객체를 동시에 읽어도 안전하다.
+//                  (어떠한 쓰레드도 그 시간에 그 객체를 읽지 않는다는 가정
+//                  하에서)
+// 여기에 추가로 std::shared_mutex는 만약 어떤 쓰레드가 쓰기를 시도하면
+// (처음에 a write lock을 걸었다면),
+// 모든 the readers가 unlock할 때까지 block하여 안전하게 wirte할 수 있음을
+// 보장한다.
+
+// std::unique_lock<std::shared_mutex>는 an exclusive("write") lock
+// on a std::shared_mutex를 의미하고,
+// std::shared_lcok<std::shared_mutex>는 an non-exclusive("read") lock
+// on a std::shared_mutex를 의미한다.
+}
+
+//-----------------------------------------------------------------------------
+// Upgrading a read-write lock
+//-----------------------------------------------------------------------------
+namespace section9
+{
+// 현재 a "read" lock on a shared_mutex 을 갖고 있다고 하자.
+// 즉, std::shared_lock<std::shared_mutex> lk 를 갖고 있고
+// lk.owns_lock()가 참이다.
+// 이제 우리는 a "write" lock 을 원한다고 하자.
+// 이때 the lock 을 "upgrade" (read->write) 할 수 있을까?
+// 이는 불가능하다. 왜냐하면,
+//
+// 두 개의 쓰레드가 read locks을 갖고 있다고 하자.
+// 처음의 read locks을 release하지 않고 write locks으로
+// 동시에 upgrade를 하려고 하려고 하면, unlock하지 않고는
+// 아무도 a write lock을 얻을 수 없어서 deadlock이 된다.
+//
+// 불가능하기 때문에 the read lock을 unlock하고 바로
+// a write lock 하는 방법으로 해결한다.
+template <class M>
+std::unique_lock<M> upgrade(std::shared_lock<M> lk)
+{
+    lk.unlock();
+    // 여기서 다른 writer가 the lock을 가져갈 수 있다.
+    return std::unique_lock<M>(*lk.mutex());
+}
+// (boost::thread::upgrade_lock를 사용할 수 있다.)
+
+}
+
+//-----------------------------------------------------------------------------
+// Downgrading a read-write lock
+//-----------------------------------------------------------------------------
+namespace section10
+{
+// 이번에는 "downgrade" (write->read) 할 수 있을까?
+// 이는 원칙적으로 가능해야 하지만 c++17에서는 불가능하다.
+template <class M>
+std::shared_lock<M> downgrade(std::unique_lock<M> lk)
+{
+    lk.unlock();
+    // 여기서 다른 writer가 the lock을 가져갈 수 있다.
+    return std::shared_lock<M>(*lk.mutex());
+}
+// (boost::thread::shared_mutex를 사용할 수 있다.)
+
+// a read lock을 갖고 있을 때,
+// 새로운 reader가 share할 수 있지만
+// 새로운 writer는 불가능하기 때문에
+// 꾸준한 readers의 stream으로 인해 writer threads은 starved될 수 있다.
+// 이를 해결하려면 "no starvation" guarantee를 제공해야 한다.
+// (boost::thread::shared_mutex는 이를 제공한다.)
+// std::shared_mutex는 그런 guarantee를 제공하지 않는다.
+// 실제 작업에서 starvation을 허용하는 구현은 좋지 못하기에
+// 실제로 shared_mutex를 구현하는 기본 라이브러리 벤더들의
+// 구현은 boost의 구현과 비슷할 것이다.
+}
+
+//-----------------------------------------------------------------------------
+// Waiting for a condition
+//-----------------------------------------------------------------------------
+namespace section11
+{
+// "Special-purpose mutex types" 절에서
+// a std::atomic<bool>을 이용하여 a polling loop을 사용했다.
+// 하지만 위와 같은 구현은
+// 어떤 쓰레드는 일찍 깨어나고서 아직 조건이 성립하지 않아서 다시 자고,
+// 어떤 쓰레드는 이미 조건이 성립한지 시간이 지나고나서 늦게 깨어난다.
+// 우리는 조건에 따라서 정확한 시간에 쓰레드가 깨어나길 원한다.
+// 그 방법은 std::condition_variable을 사용하는 것이다.
+//
+// 주어진 std::condition_variable cv에 대해서,
+// 쓰레드는
+// cv.wait(lk)를 호출하여 cv의 조건이 성립할 때까지 기다릴 수 있다.
+// cv.notify_one()를 호출하여 cv 조건을 기다리는 쓰레드 하나를 깨울 수 있다.
+// cv.notify_all()를 호출하여 cv 조건을 기다리는 쓰레드 모두를 깨울 수 있다.
+// 
+// 하지만 외부 요인(ex. a POSIX signal)에 의해 notify들을 호출하지 않아도
+// 쓰레드가 깨어날 수 있다. 이러한 현상을 a spurious wakeup 이라 한다.
+// a spurios wakeup을 방지하는 방법은 
+// 쓰레드가 깨어났을 때 조건을 검사하는 것이다. 예를 들어,
+// 버퍼 b가 some input을 받기를 기다릴 때, 이 쓰레드가 깨어나면
+// 반드시 b.empty()를 검사하고 비어있으면 다시 기다린다.
 }
